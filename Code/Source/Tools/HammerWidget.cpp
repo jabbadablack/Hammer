@@ -2,6 +2,10 @@
 #include <QVBoxLayout>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 #include <AtomToolsFramework/Viewport/ModularViewportCameraController.h>
+#include <Atom/RPI.Public/RenderPipeline.h>
+#include <Atom/RPI.Public/Scene.h>
+#include <Atom/RPI.Public/ViewportContext.h>
+#include <Atom/RPI.Public/WindowContext.h>
 #include <AzFramework/Input/Devices/Keyboard/InputDeviceKeyboard.h>
 #include <AzFramework/Input/Devices/Mouse/InputDeviceMouse.h>
 #include <AzFramework/Scene/Scene.h>
@@ -22,7 +26,29 @@ namespace Hammer
         {
             if (AZStd::shared_ptr<AzFramework::Scene> mainScene = sceneSystem->GetScene(AzFramework::Scene::MainSceneName))
             {
-                viewport1->SetScene(mainScene);
+                // Bind the scene without the default lit pipeline; Hammer builds its own
+                // wireframe-only pipeline below instead.
+                viewport1->SetScene(mainScene, /*useDefaultRenderPipeline*/ false);
+
+                if (auto viewportContext = viewport1->GetViewportContext())
+                {
+                    if (auto windowContext = viewportContext->GetWindowContext())
+                    {
+                        AZ::RPI::RenderPipelineDescriptor pipelineDesc;
+                        pipelineDesc.m_name = "HammerWireframePipeline";
+                        pipelineDesc.m_rootPassTemplate = "HammerWireframePipelineTemplate";
+
+                        if (auto pipeline = AZ::RPI::RenderPipeline::CreateRenderPipelineForWindow(pipelineDesc, *windowContext))
+                        {
+                            // Adding the pipeline to the scene (bound to our window) is enough:
+                            // ViewportContext automatically binds its own view to it once the
+                            // pipeline's pass tree (and its view tags) are ready. Calling
+                            // SetDefaultView() here ourselves is premature and asserts.
+                            viewportContext->GetRenderScene()->AddRenderPipeline(pipeline);
+                            m_pipeline = pipeline;
+                        }
+                    }
+                }
             }
         }
 
@@ -44,12 +70,21 @@ namespace Hammer
         cameraController->SetCameraViewportContextBuilderCallback(
             [viewportId = viewport1->GetId()](AZStd::unique_ptr<AtomToolsFramework::ModularCameraViewportContext>& cameraViewportContext)
             {
+                AZ_Warning("HammerWidget", false, "Camera controller instance created for viewport %d", static_cast<int>(viewportId));
                 cameraViewportContext = AZStd::make_unique<AtomToolsFramework::ModularCameraViewportContextImpl>(viewportId);
             });
         cameraController->SetCameraPriorityBuilderCallback(
             [](AtomToolsFramework::CameraControllerPriorityFn& priorityFn)
             {
                 priorityFn = AtomToolsFramework::DefaultCameraControllerPriority;
+            });
+        cameraController->SetCameraPropsBuilderCallback(
+            [](AzFramework::CameraProps& cameraProps)
+            {
+                cameraProps.m_rotateSmoothnessFn = [] { return 5.0f; };
+                cameraProps.m_translateSmoothnessFn = [] { return 5.0f; };
+                cameraProps.m_rotateSmoothingEnabledFn = [] { return true; };
+                cameraProps.m_translateSmoothingEnabledFn = [] { return true; };
             });
         cameraController->SetCameraListBuilderCallback(
             [rotateCamera, translateCamera, scrollCamera](AzFramework::Cameras& cameras)
@@ -63,5 +98,17 @@ namespace Hammer
 
         mainLayout->addWidget(viewport1);
         setLayout(mainLayout);
+    }
+
+    HammerWidget::~HammerWidget()
+    {
+        // Must remove the pipeline from the scene here, while the viewport (and the window
+        // context/swapchain it owns) is still alive. Qt destroys child widgets after this
+        // destructor body runs.
+        if (m_pipeline)
+        {
+            m_pipeline->RemoveFromScene();
+            m_pipeline = nullptr;
+        }
     }
 }

@@ -1,10 +1,12 @@
 
 #include <AzCore/Serialization/SerializeContext.h>
 
+#include <Atom/RPI.Public/FeatureProcessorFactory.h>
 #include <AzToolsFramework/API/ViewPaneOptions.h>
 
 #include "HammerWidget.h"
 #include "HammerEditorSystemComponent.h"
+#include "HammerWireframeFeatureProcessor.h"
 
 #include <Hammer/HammerTypeIds.h>
 
@@ -15,6 +17,8 @@ namespace Hammer
 
     void HammerEditorSystemComponent::Reflect(AZ::ReflectContext* context)
     {
+        HammerWireframeFeatureProcessor::Reflect(context);
+
         if (auto serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
         {
             serializeContext->Class<HammerEditorSystemComponent, HammerSystemComponent>()
@@ -52,10 +56,22 @@ namespace Hammer
     {
         HammerSystemComponent::Activate();
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
+
+        AZ::RPI::FeatureProcessorFactory::Get()->RegisterFeatureProcessor<HammerWireframeFeatureProcessor>();
+
+        m_loadTemplatesHandler = AZ::RPI::PassSystemInterface::OnReadyLoadTemplatesEvent::Handler(
+            []()
+            {
+                AZ::RPI::PassSystemInterface::Get()->LoadPassTemplateMappings("Passes/HammerWireframePasses.azasset");
+            });
+        AZ::RPI::PassSystemInterface::Get()->ConnectEvent(m_loadTemplatesHandler);
     }
 
     void HammerEditorSystemComponent::Deactivate()
     {
+        m_loadTemplatesHandler.Disconnect();
+        AZ::RPI::FeatureProcessorFactory::Get()->UnregisterFeatureProcessor<HammerWireframeFeatureProcessor>();
+
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
         HammerSystemComponent::Deactivate();
     }

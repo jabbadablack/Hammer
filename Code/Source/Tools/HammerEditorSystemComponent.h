@@ -3,6 +3,7 @@
 
 #include <Clients/HammerSystemComponent.h>
 
+#include <Atom/RPI.Public/Pass/PassSystemInterface.h>
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 
 namespace Hammer
@@ -33,5 +34,7 @@ namespace Hammer
 
         // AzToolsFramework::EditorEventsBus overrides ...
         void NotifyRegisterViews() override;
+
+        AZ::RPI::PassSystemInterface::OnReadyLoadTemplatesEvent::Handler m_loadTemplatesHandler;
     };
 } // namespace Hammer
