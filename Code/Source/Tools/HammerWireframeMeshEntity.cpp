@@ -17,15 +17,19 @@ namespace Hammer
     {
         // Safe here: the constructor only ever runs from main-thread contexts (Activate(),
         // OnEditorEntityCreated, or the periodic OnTick rescan).
-        TransformBus::EventResult(m_cachedWorldTM, m_entityId, &TransformBus::Events::GetWorldTM);
+        Transform worldTM = Transform::CreateIdentity();
+        TransformBus::EventResult(worldTM, m_entityId, &TransformBus::Events::GetWorldTM);
+        m_cachedWorldTM = worldTM;
 
         TransformNotificationBus::Handler::BusConnect(m_entityId);
+        Render::MeshComponentNotificationBus::Handler::BusConnect(m_entityId);
         Render::MeshHandleStateNotificationBus::Handler::BusConnect(m_entityId);
     }
 
     HammerWireframeMeshEntity::~HammerWireframeMeshEntity()
     {
         Render::MeshHandleStateNotificationBus::Handler::BusDisconnect();
+        Render::MeshComponentNotificationBus::Handler::BusDisconnect();
         TransformNotificationBus::Handler::BusDisconnect();
     }
 
@@ -41,18 +45,45 @@ namespace Hammer
 
     void HammerWireframeMeshEntity::RetryIfNotYetDrawable()
     {
-        if (CanDraw() || !m_meshHandle || !m_meshHandle->IsValid() || !m_scene)
+        if (CanDraw())
         {
             return;
         }
 
-        auto* featureProcessor = m_scene->GetFeatureProcessor<Render::MeshFeatureProcessorInterface>();
+        // m_scene is set once at construction and never cleared; null here would mean this
+        // object outlived (or never had) a valid owning Scene, which should be structurally
+        // impossible given how HammerWireframeFeatureProcessor constructs these.
+        AZ_Assert(m_scene, "HammerWireframeMeshEntity has no owning Scene for entity %s", m_entityId.ToString().c_str());
+        if (!m_scene)
+        {
+            return;
+        }
+
+        // Re-fetch rather than trusting the cached m_meshHandle: this only runs from OnTick
+        // (main thread), so it's safe, and it avoids dereferencing a handle that went stale if
+        // the owning MeshComponentController was torn down without us catching the transition.
+        // A null/invalid handle here is a routine, expected state (no mesh component, or one
+        // that hasn't acquired its handle yet), not an error - no diagnostic for that case.
+        const Render::MeshFeatureProcessorInterface::MeshHandle* freshHandle = nullptr;
+        Render::MeshHandleStateRequestBus::EventResult(freshHandle, m_entityId, &Render::MeshHandleStateRequests::GetMeshHandle);
+        m_meshHandle = freshHandle;
+
+        if (!m_meshHandle || !m_meshHandle->IsValid())
+        {
+            return;
+        }
+
+        Render::MeshFeatureProcessorInterface* featureProcessor = m_scene->GetFeatureProcessor<Render::MeshFeatureProcessorInterface>();
+        AZ_Warning(
+            "HammerWireframeMeshEntity", featureProcessor, "No MeshFeatureProcessorInterface registered for the scene; entity %s cannot be drawn",
+            m_entityId.ToString().c_str());
         if (!featureProcessor)
         {
             return;
         }
 
-        if (const auto model = featureProcessor->GetModel(*m_meshHandle))
+        const Data::Instance<RPI::Model> model = featureProcessor->GetModel(*m_meshHandle);
+        if (model)
         {
             CreateOrUpdateDrawPackets(featureProcessor, model);
         }
@@ -65,16 +96,23 @@ namespace Hammer
 
     void HammerWireframeMeshEntity::Draw()
     {
-        if (!CanDraw() || !m_meshHandle || !m_meshHandle->IsValid() || !m_scene)
+        if (!CanDraw() || !m_meshHandle || !m_meshHandle->IsValid())
+        {
+            return;
+        }
+
+        AZ_Assert(m_scene, "HammerWireframeMeshEntity has no owning Scene for entity %s", m_entityId.ToString().c_str());
+        if (!m_scene)
         {
             return;
         }
 
         RPI::DynamicDrawInterface* dynamicDraw = RPI::GetDynamicDraw();
-        for (auto& drawPacket : m_drawPackets)
+        for (HammerWireframeDrawPacket& drawPacket : m_drawPackets)
         {
             drawPacket.Update(*m_scene);
-            if (const auto* rhiDrawPacket = drawPacket.GetRHIDrawPacket())
+            const RHI::DrawPacket* rhiDrawPacket = drawPacket.GetRHIDrawPacket();
+            if (rhiDrawPacket)
             {
                 dynamicDraw->AddDrawPacket(m_scene, rhiDrawPacket);
             }
@@ -90,25 +128,62 @@ namespace Hammer
             return;
         }
 
+        AZ_Assert(m_scene, "HammerWireframeMeshEntity has no owning Scene for entity %s", m_entityId.ToString().c_str());
         if (!m_scene)
         {
             return;
         }
 
-        auto* featureProcessor = m_scene->GetFeatureProcessor<Render::MeshFeatureProcessorInterface>();
+        Render::MeshFeatureProcessorInterface* featureProcessor = m_scene->GetFeatureProcessor<Render::MeshFeatureProcessorInterface>();
+        AZ_Warning(
+            "HammerWireframeMeshEntity", featureProcessor, "No MeshFeatureProcessorInterface registered for the scene; entity %s cannot be drawn",
+            m_entityId.ToString().c_str());
         if (!featureProcessor)
         {
             return;
         }
 
-        if (const auto model = featureProcessor->GetModel(*m_meshHandle))
+        const Data::Instance<RPI::Model> model = featureProcessor->GetModel(*m_meshHandle);
+        if (model)
         {
             CreateOrUpdateDrawPackets(featureProcessor, model);
         }
     }
 
+    void HammerWireframeMeshEntity::OnModelReady(const Data::Asset<RPI::ModelAsset>&, const Data::Instance<RPI::Model>& model)
+    {
+        if (!m_meshHandle || !m_meshHandle->IsValid())
+        {
+            return;
+        }
+
+        AZ_Assert(m_scene, "HammerWireframeMeshEntity has no owning Scene for entity %s", m_entityId.ToString().c_str());
+        if (!m_scene)
+        {
+            return;
+        }
+
+        Render::MeshFeatureProcessorInterface* featureProcessor = m_scene->GetFeatureProcessor<Render::MeshFeatureProcessorInterface>();
+        AZ_Warning(
+            "HammerWireframeMeshEntity", featureProcessor, "No MeshFeatureProcessorInterface registered for the scene; entity %s cannot be drawn",
+            m_entityId.ToString().c_str());
+        if (!featureProcessor)
+        {
+            return;
+        }
+
+        CreateOrUpdateDrawPackets(featureProcessor, model);
+    }
+
+    void HammerWireframeMeshEntity::OnModelPreDestroy()
+    {
+        // Drop our reference to the old model's geometry immediately, rather than holding it
+        // (and its GPU-side buffers) alive until the next successful rebuild.
+        ClearDrawData();
+    }
+
     void HammerWireframeMeshEntity::CreateOrUpdateDrawPackets(
-        const Render::MeshFeatureProcessorInterface* featureProcessor, Data::Instance<RPI::Model> model)
+        Render::MeshFeatureProcessorInterface* featureProcessor, const Data::Instance<RPI::Model>& model)
     {
         ClearDrawData();
 
@@ -117,30 +192,32 @@ namespace Hammer
             return;
         }
 
-        const auto objectSrg = CreateObjectSrg(featureProcessor);
+        const Data::Instance<RPI::ShaderResourceGroup> objectSrg = CreateObjectSrg(featureProcessor);
         BuildDrawPackets(model->GetModelAsset(), objectSrg);
     }
 
-    void HammerWireframeMeshEntity::BuildDrawPackets(Data::Asset<RPI::ModelAsset> modelAsset, Data::Instance<RPI::ShaderResourceGroup> objectSrg)
+    void HammerWireframeMeshEntity::BuildDrawPackets(
+        const Data::Asset<RPI::ModelAsset>& modelAsset, const Data::Instance<RPI::ShaderResourceGroup>& objectSrg)
     {
-        const auto modelLodAssets = modelAsset->GetLodAssets();
+        const AZStd::span<const Data::Asset<RPI::ModelLodAsset>> modelLodAssets = modelAsset->GetLodAssets();
         const Data::Asset<RPI::ModelLodAsset>& modelLodAsset = modelLodAssets[0];
-        Data::Instance<RPI::ModelLod> modelLod = RPI::ModelLod::FindOrCreate(modelLodAsset, modelAsset).get();
+        const Data::Instance<RPI::ModelLod> modelLod = RPI::ModelLod::FindOrCreate(modelLodAsset, modelAsset).get();
 
-        for (size_t i = 0; i < modelLod->GetMeshes().size(); i++)
+        const size_t meshCount = modelLod->GetMeshes().size();
+        for (size_t i = 0; i < meshCount; i++)
         {
             m_drawPackets.emplace_back(HammerWireframeDrawPacket(*modelLod, i, m_material, objectSrg));
         }
     }
 
     Data::Instance<RPI::ShaderResourceGroup> HammerWireframeMeshEntity::CreateObjectSrg(
-        const Render::MeshFeatureProcessorInterface* featureProcessor) const
+        Render::MeshFeatureProcessorInterface* featureProcessor) const
     {
-        const auto& shaderAsset = m_material->GetAsset()->GetMaterialTypeAsset()->GetShaderAssetForObjectSrg();
-        const auto& objectSrgLayout = m_material->GetAsset()->GetObjectSrgLayout();
-        const auto objectSrg = RPI::ShaderResourceGroup::Create(shaderAsset, objectSrgLayout->GetName());
+        const Data::Asset<RPI::ShaderAsset>& shaderAsset = m_material->GetAsset()->GetMaterialTypeAsset()->GetShaderAssetForObjectSrg();
+        const RHI::Ptr<RHI::ShaderResourceGroupLayout>& objectSrgLayout = m_material->GetAsset()->GetObjectSrgLayout();
+        const Data::Instance<RPI::ShaderResourceGroup> objectSrg = RPI::ShaderResourceGroup::Create(shaderAsset, objectSrgLayout->GetName());
 
-        const auto objectId = featureProcessor->GetObjectId(*m_meshHandle).GetIndex();
+        const uint32_t objectId = featureProcessor->GetObjectId(*m_meshHandle).GetIndex();
         RHI::ShaderInputNameIndex objectIdIndex = "m_objectId";
         objectSrg->SetConstant(objectIdIndex, objectId);
         objectSrg->Compile();

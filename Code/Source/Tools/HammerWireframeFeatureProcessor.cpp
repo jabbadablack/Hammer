@@ -16,10 +16,10 @@ namespace Hammer
         Data::Instance<RPI::Material> CreateWireframeMaterial()
         {
             const AZStd::string path = "materials/hammerwireframe.azmaterial";
-            const auto materialAsset = RPI::AssetUtils::LoadCriticalAsset<RPI::MaterialAsset>(path);
+            const Data::Asset<RPI::MaterialAsset> materialAsset = RPI::AssetUtils::LoadCriticalAsset<RPI::MaterialAsset>(path);
             AZ_Warning("HammerWireframeFeatureProcessor", materialAsset.GetId().IsValid(), "Failed to load material asset at '%s'", path.c_str());
 
-            const auto material = RPI::Material::FindOrCreate(materialAsset);
+            const Data::Instance<RPI::Material> material = RPI::Material::FindOrCreate(materialAsset);
             AZ_Warning("HammerWireframeFeatureProcessor", material, "Material::FindOrCreate returned null for '%s'", path.c_str());
 
             return material;
@@ -50,8 +50,14 @@ namespace Hammer
         AzToolsFramework::EditorEntityContextRequestBus::BroadcastResult(
             editorContextId, &AzToolsFramework::EditorEntityContextRequests::GetEditorEntityContextId);
 
+        // Expected transiently during early engine startup, before the editor entity context
+        // exists yet; log once rather than every periodic scan so this isn't spam during that
+        // window (this function also runs once per second via OnTick).
+        static bool loggedNullContext = false;
         if (editorContextId.IsNull())
         {
+            AZ_Warning("HammerWireframeFeatureProcessor", loggedNullContext, "Editor entity context not available yet; skipping entity scan");
+            loggedNullContext = true;
             return;
         }
 
@@ -159,8 +165,13 @@ namespace Hammer
 
     void HammerWireframeFeatureProcessor::Render(const RenderPacket&)
     {
+        // Expected transiently at startup while the wireframe material asset is still loading
+        // (see OnTick); log once rather than every frame so this isn't spam during that window.
+        static bool loggedMissingMaterial = false;
         if (!m_material)
         {
+            AZ_Warning("HammerWireframeFeatureProcessor", loggedMissingMaterial, "Wireframe material not yet loaded; skipping render");
+            loggedMissingMaterial = true;
             return;
         }
 

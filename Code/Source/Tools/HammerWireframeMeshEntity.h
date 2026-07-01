@@ -4,6 +4,7 @@
 
 #include <Atom/RPI.Reflect/Model/ModelLodIndex.h>
 #include <AtomCore/Instance/Instance.h>
+#include <AtomLyIntegration/CommonFeatures/Mesh/MeshComponentBus.h>
 #include <AtomLyIntegration/CommonFeatures/Mesh/MeshHandleStateBus.h>
 #include <AzCore/Component/TransformBus.h>
 #include <AzCore/std/containers/vector.h>
@@ -23,8 +24,16 @@ namespace Hammer
     //    re-derived from the entity ID via a bus lookup every frame
     //  - LOD selection (which needs a View, itself another bus-guarded lookup) is skipped
     //    entirely in favor of always using LOD 0, which is fine for a debug wireframe overlay
+    //
+    // MeshHandleStateNotificationBus only fires when the mesh handle itself is acquired or
+    // released (e.g. toggling the entity's visibility). It does NOT fire when the model backing
+    // an already-acquired handle changes in place (e.g. live White Box edits, swapping the mesh
+    // asset on the component) - that case is covered by MeshComponentNotificationBus::OnModelReady
+    // instead, which is explicitly documented as safe to receive from job threads (it uses a
+    // real mutex, unlike TransformBus/EntityIdContextQueryBus).
     class HammerWireframeMeshEntity
         : private AZ::Render::MeshHandleStateNotificationBus::Handler
+        , private AZ::Render::MeshComponentNotificationBus::Handler
         , private AZ::TransformNotificationBus::Handler
     {
     public:
@@ -42,14 +51,18 @@ namespace Hammer
         // MeshHandleStateNotificationBus overrides ...
         void OnMeshHandleSet(const AZ::Render::MeshFeatureProcessorInterface::MeshHandle* meshHandle) override;
 
+        // MeshComponentNotificationBus overrides ...
+        void OnModelReady(const AZ::Data::Asset<AZ::RPI::ModelAsset>& modelAsset, const AZ::Data::Instance<AZ::RPI::Model>& model) override;
+        void OnModelPreDestroy() override;
+
         // TransformNotificationBus overrides ...
         void OnTransformChanged(const AZ::Transform& localTM, const AZ::Transform& worldTM) override;
 
         void CreateOrUpdateDrawPackets(
-            const AZ::Render::MeshFeatureProcessorInterface* featureProcessor, AZ::Data::Instance<AZ::RPI::Model> model);
+            AZ::Render::MeshFeatureProcessorInterface* featureProcessor, const AZ::Data::Instance<AZ::RPI::Model>& model);
         void ClearDrawData();
-        void BuildDrawPackets(AZ::Data::Asset<AZ::RPI::ModelAsset> modelAsset, AZ::Data::Instance<AZ::RPI::ShaderResourceGroup> objectSrg);
-        AZ::Data::Instance<AZ::RPI::ShaderResourceGroup> CreateObjectSrg(const AZ::Render::MeshFeatureProcessorInterface* featureProcessor) const;
+        void BuildDrawPackets(const AZ::Data::Asset<AZ::RPI::ModelAsset>& modelAsset, const AZ::Data::Instance<AZ::RPI::ShaderResourceGroup>& objectSrg);
+        AZ::Data::Instance<AZ::RPI::ShaderResourceGroup> CreateObjectSrg(AZ::Render::MeshFeatureProcessorInterface* featureProcessor) const;
 
         AZ::EntityId m_entityId;
         AZ::RPI::Scene* m_scene = nullptr;

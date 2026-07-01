@@ -19,26 +19,38 @@ namespace Hammer
         : QWidget(parent)
     {
         QVBoxLayout* mainLayout = new QVBoxLayout(this);
-        auto* viewport1 = new AtomToolsFramework::RenderViewportWidget(this);
+        AtomToolsFramework::RenderViewportWidget* viewport1 = new AtomToolsFramework::RenderViewportWidget(this);
         viewport1->InitializeViewportContext();
 
-        if (auto* sceneSystem = AzFramework::SceneSystemInterface::Get())
+        AzFramework::ISceneSystem* sceneSystem = AzFramework::SceneSystemInterface::Get();
+        AZ_Error("HammerWidget", sceneSystem, "AzFramework::SceneSystemInterface is not available; Hammer cannot bind a scene");
+        if (sceneSystem)
         {
-            if (AZStd::shared_ptr<AzFramework::Scene> mainScene = sceneSystem->GetScene(AzFramework::Scene::MainSceneName))
+            AZStd::shared_ptr<AzFramework::Scene> mainScene = sceneSystem->GetScene(AzFramework::Scene::MainSceneName);
+            AZ_Error("HammerWidget", mainScene, "Main scene '%s' not found", AzFramework::Scene::MainSceneName.data());
+            if (mainScene)
             {
                 // Bind the scene without the default lit pipeline; Hammer builds its own
                 // wireframe-only pipeline below instead.
                 viewport1->SetScene(mainScene, /*useDefaultRenderPipeline*/ false);
 
-                if (auto viewportContext = viewport1->GetViewportContext())
+                AZ::RPI::ViewportContextPtr viewportContext = viewport1->GetViewportContext();
+                AZ_Error("HammerWidget", viewportContext, "RenderViewportWidget has no ViewportContext after SetScene");
+                if (viewportContext)
                 {
-                    if (auto windowContext = viewportContext->GetWindowContext())
+                    AZ::RPI::WindowContextSharedPtr windowContext = viewportContext->GetWindowContext();
+                    AZ_Error("HammerWidget", windowContext, "ViewportContext has no WindowContext");
+                    if (windowContext)
                     {
                         AZ::RPI::RenderPipelineDescriptor pipelineDesc;
                         pipelineDesc.m_name = "HammerWireframePipeline";
                         pipelineDesc.m_rootPassTemplate = "HammerWireframePipelineTemplate";
 
-                        if (auto pipeline = AZ::RPI::RenderPipeline::CreateRenderPipelineForWindow(pipelineDesc, *windowContext))
+                        AZ::RPI::RenderPipelinePtr pipeline = AZ::RPI::RenderPipeline::CreateRenderPipelineForWindow(pipelineDesc, *windowContext);
+                        AZ_Error(
+                            "HammerWidget", pipeline,
+                            "Failed to create HammerWireframePipeline; is HammerWireframePipelineTemplate registered/compiled?");
+                        if (pipeline)
                         {
                             // Adding the pipeline to the scene (bound to our window) is enough:
                             // ViewportContext automatically binds its own view to it once the
@@ -61,16 +73,18 @@ namespace Hammer
         translateIds.m_downChannelId = AzFramework::InputDeviceKeyboard::Key::AlphanumericQ;
         translateIds.m_boostChannelId = AzFramework::InputDeviceKeyboard::Key::ModifierShiftL;
 
-        auto rotateCamera = AZStd::make_shared<AzFramework::RotateCameraInput>(AzFramework::InputDeviceMouse::Button::Right);
-        auto translateCamera = AZStd::make_shared<AzFramework::TranslateCameraInput>(
+        AZStd::shared_ptr<AzFramework::RotateCameraInput> rotateCamera =
+            AZStd::make_shared<AzFramework::RotateCameraInput>(AzFramework::InputDeviceMouse::Button::Right);
+        AZStd::shared_ptr<AzFramework::TranslateCameraInput> translateCamera = AZStd::make_shared<AzFramework::TranslateCameraInput>(
             translateIds, AzFramework::LookTranslation, AzFramework::TranslatePivotLook);
-        auto scrollCamera = AZStd::make_shared<AzFramework::LookScrollTranslationCameraInput>();
+        AZStd::shared_ptr<AzFramework::LookScrollTranslationCameraInput> scrollCamera =
+            AZStd::make_shared<AzFramework::LookScrollTranslationCameraInput>();
 
-        auto cameraController = AZStd::make_shared<AtomToolsFramework::ModularViewportCameraController>();
+        AZStd::shared_ptr<AtomToolsFramework::ModularViewportCameraController> cameraController =
+            AZStd::make_shared<AtomToolsFramework::ModularViewportCameraController>();
         cameraController->SetCameraViewportContextBuilderCallback(
             [viewportId = viewport1->GetId()](AZStd::unique_ptr<AtomToolsFramework::ModularCameraViewportContext>& cameraViewportContext)
             {
-                AZ_Warning("HammerWidget", false, "Camera controller instance created for viewport %d", static_cast<int>(viewportId));
                 cameraViewportContext = AZStd::make_unique<AtomToolsFramework::ModularCameraViewportContextImpl>(viewportId);
             });
         cameraController->SetCameraPriorityBuilderCallback(

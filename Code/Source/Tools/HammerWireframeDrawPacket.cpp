@@ -43,7 +43,7 @@ namespace Hammer
 
     bool HammerWireframeDrawPacket::DoUpdate(const RPI::Scene& parentScene)
     {
-        auto meshes = m_modelLod->GetMeshes();
+        AZStd::span<RPI::ModelLod::Mesh> meshes = m_modelLod->GetMeshes();
         RPI::ModelLod::Mesh& mesh = meshes[m_modelLodMeshIndex];
 
         RHI::DrawPacketBuilder drawPacketBuilder{ RHI::MultiDevice::AllDevices };
@@ -104,6 +104,7 @@ namespace Hammer
                 {},
                 m_material->GetAsset()->GetMaterialTypeAsset()->GetUvNameMap()))
             {
+                AZ_Warning("HammerWireframeDrawPacket", false, "GetStreamsForMesh failed; mesh geometry doesn't satisfy the shader's input contract");
                 return false;
             }
 
