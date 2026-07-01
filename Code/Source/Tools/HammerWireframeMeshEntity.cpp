@@ -8,7 +8,6 @@
 #include <Atom/RPI.Public/ViewportContext.h>
 #include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AzCore/Component/TransformBus.h>
-#include <AzToolsFramework/Entity/EditorEntityHelpers.h>
 
 namespace Hammer
 {
@@ -44,17 +43,48 @@ namespace Hammer
         : m_entityId(entityId)
         , m_material(material)
     {
+        // Safe here: the constructor only ever runs from main-thread contexts (Activate(),
+        // OnEditorEntityCreated, or the periodic OnTick rescan).
+        TransformBus::EventResult(m_cachedWorldTM, m_entityId, &TransformBus::Events::GetWorldTM);
+
+        TransformNotificationBus::Handler::BusConnect(m_entityId);
         Render::MeshHandleStateNotificationBus::Handler::BusConnect(m_entityId);
     }
 
     HammerWireframeMeshEntity::~HammerWireframeMeshEntity()
     {
         Render::MeshHandleStateNotificationBus::Handler::BusDisconnect();
+        TransformNotificationBus::Handler::BusDisconnect();
+    }
+
+    void HammerWireframeMeshEntity::OnTransformChanged(const Transform&, const Transform& worldTM)
+    {
+        m_cachedWorldTM = worldTM;
     }
 
     bool HammerWireframeMeshEntity::CanDraw() const
     {
         return !m_drawPackets.empty();
+    }
+
+    void HammerWireframeMeshEntity::RetryIfNotYetDrawable()
+    {
+        if (CanDraw() || !m_meshHandle || !m_meshHandle->IsValid())
+        {
+            return;
+        }
+
+        const DrawableMetaData metaData(m_entityId);
+        if (!metaData.m_featureProcessor)
+        {
+            return;
+        }
+
+        if (const auto model = metaData.m_featureProcessor->GetModel(*m_meshHandle))
+        {
+            const auto modelLodIndex = GetModelLodIndex(metaData.m_view, model);
+            CreateOrUpdateDrawPackets(metaData.m_featureProcessor, modelLodIndex, model);
+        }
     }
 
     void HammerWireframeMeshEntity::ClearDrawData()
@@ -100,8 +130,7 @@ namespace Hammer
 
     RPI::ModelLodIndex HammerWireframeMeshEntity::GetModelLodIndex(const RPI::ViewPtr view, Data::Instance<RPI::Model> model) const
     {
-        const auto worldTM = AzToolsFramework::GetWorldTransform(m_entityId);
-        return RPI::ModelLodUtils::SelectLod(view.get(), worldTM, *model);
+        return RPI::ModelLodUtils::SelectLod(view.get(), m_cachedWorldTM, *model);
     }
 
     void HammerWireframeMeshEntity::OnMeshHandleSet(const Render::MeshFeatureProcessorInterface::MeshHandle* meshHandle)
@@ -125,13 +154,12 @@ namespace Hammer
         {
             const auto modelLodIndex = GetModelLodIndex(metaData.m_view, model);
             CreateOrUpdateDrawPackets(metaData.m_featureProcessor, modelLodIndex, model);
-            const auto worldTM = AzToolsFramework::GetWorldTransform(m_entityId);
-            const auto worldAabb = model->GetModelAsset()->GetAabb().GetTransformedAabb(worldTM);
+            const auto worldAabb = model->GetModelAsset()->GetAabb().GetTransformedAabb(m_cachedWorldTM);
             AZ_Warning(
                 "HammerWireframeMeshEntity", false,
                 "OnMeshHandleSet: entity %s built %zu draw packets, worldPos=(%.2f,%.2f,%.2f), worldAabbMin=(%.2f,%.2f,%.2f) worldAabbMax=(%.2f,%.2f,%.2f)",
                 m_entityId.ToString().c_str(), m_drawPackets.size(),
-                double(worldTM.GetTranslation().GetX()), double(worldTM.GetTranslation().GetY()), double(worldTM.GetTranslation().GetZ()),
+                double(m_cachedWorldTM.GetTranslation().GetX()), double(m_cachedWorldTM.GetTranslation().GetY()), double(m_cachedWorldTM.GetTranslation().GetZ()),
                 double(worldAabb.GetMin().GetX()), double(worldAabb.GetMin().GetY()), double(worldAabb.GetMin().GetZ()),
                 double(worldAabb.GetMax().GetX()), double(worldAabb.GetMax().GetY()), double(worldAabb.GetMax().GetZ()));
         }

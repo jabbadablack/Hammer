@@ -118,6 +118,11 @@ namespace Hammer
                     "HammerWireframeFeatureProcessor", false, "ScanForNewEntities: now tracking %zu entities (was %zu)",
                     m_meshEntities.size(), beforeCount);
             }
+
+            for (auto& [entityId, meshEntity] : m_meshEntities)
+            {
+                meshEntity->RetryIfNotYetDrawable();
+            }
         }
     }
 
