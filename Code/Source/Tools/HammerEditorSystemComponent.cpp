@@ -78,6 +78,7 @@ namespace Hammer
         // that teardown and crashed on exit.
         m_hammerWidget = nullptr;
         m_perspectiveWidget = nullptr;
+        HammerWireframeFeatureProcessor::SetWireframeWindow(nullptr);
 
         AZ::RPI::FeatureProcessorFactory::Get()->UnregisterFeatureProcessor<HammerWireframeFeatureProcessor>();
 

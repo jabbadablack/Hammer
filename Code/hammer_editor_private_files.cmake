@@ -6,6 +6,8 @@ set(FILES
     Source/Tools/HammerWidget.h
     Source/Tools/HammerViewportCameraFactory.cpp
     Source/Tools/HammerViewportCameraFactory.h
+    Source/Tools/HammerViewportManipulatorController.cpp
+    Source/Tools/HammerViewportManipulatorController.h
     Source/Tools/HammerWireframeDrawPacket.cpp
     Source/Tools/HammerWireframeDrawPacket.h
     Source/Tools/HammerWireframeMeshEntity.cpp
