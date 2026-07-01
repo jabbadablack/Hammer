@@ -79,9 +79,12 @@ namespace Hammer
     void HammerEditorSystemComponent::NotifyRegisterViews()
     {
         AzToolsFramework::ViewPaneOptions options;
-        options.paneRect = QRect(100, 100, 500, 400);
+        options.paneRect = QRect(100, 100, 800, 800);
         options.showOnToolsToolbar = true;
         options.toolbarIcon = ":/Hammer/toolbar_icon.svg";
+        // Dock beside the main viewport by default instead of opening as a floating window, so
+        // opening Hammer looks like splitting the viewport into two panes.
+        options.preferedDockingArea = Qt::RightDockWidgetArea;
 
         // Register our custom widget as a dockable tool with the Editor under an Examples sub-menu
         AzToolsFramework::RegisterViewPane<HammerWidget>("Hammer", "Examples", options);

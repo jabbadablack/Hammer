@@ -5,10 +5,27 @@
 #include <Atom/RPI.Public/Scene.h>
 #include <Atom/RPI.Public/Shader/ShaderResourceGroup.h>
 #include <AzCore/Component/TransformBus.h>
+#include <AzCore/Math/Color.h>
+#include <AzCore/Math/MathUtils.h>
 
 namespace Hammer
 {
     using namespace AZ;
+
+    namespace
+    {
+        // Deterministic per-entity color so each mesh's wireframe is visually distinguishable,
+        // stable across frames/sessions (a pure function of the entity ID, nothing stored).
+        Color ColorForEntity(EntityId entityId)
+        {
+            const size_t hash = AZStd::hash<EntityId>{}(entityId);
+            const float hueRadians = static_cast<float>(hash % 360) * (Constants::TwoPi / 360.0f);
+            Color color;
+            color.SetFromHSVRadians(hueRadians, 0.75f, 1.0f);
+            color.SetA(1.0f);
+            return color;
+        }
+    } // namespace
 
     HammerWireframeMeshEntity::HammerWireframeMeshEntity(EntityId entityId, Data::Instance<RPI::Material> material, RPI::Scene* scene)
         : m_entityId(entityId)
@@ -220,6 +237,10 @@ namespace Hammer
         const uint32_t objectId = featureProcessor->GetObjectId(*m_meshHandle).GetIndex();
         RHI::ShaderInputNameIndex objectIdIndex = "m_objectId";
         objectSrg->SetConstant(objectIdIndex, objectId);
+
+        RHI::ShaderInputNameIndex colorIndex = "m_color";
+        objectSrg->SetConstant(colorIndex, ColorForEntity(m_entityId).GetAsVector4());
+
         objectSrg->Compile();
 
         return objectSrg;

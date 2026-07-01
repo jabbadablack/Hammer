@@ -14,6 +14,7 @@
 ShaderResourceGroup ObjectSrg : SRG_PerObject
 {
     uint m_objectId;
+    float4 m_color;
 
     float4x4 GetWorldMatrix()
     {
@@ -49,6 +50,6 @@ struct PixelOutput
 PixelOutput MainPS(VSOutput IN)
 {
     PixelOutput OUT;
-    OUT.m_color = float4(0.0, 1.0, 0.0, 1.0);
+    OUT.m_color = ObjectSrg::m_color;
     return OUT;
 }
