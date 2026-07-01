@@ -49,6 +49,10 @@ namespace Hammer
         // how or when entities appear.
         void ScanForNewEntities();
 
+        // Removes tracked entries whose entity no longer exists (see .cpp for why this is needed
+        // in addition to OnEditorEntityDeleted).
+        void PruneDeadEntities();
+
         AZ::Data::Instance<AZ::RPI::Material> m_material;
         AZStd::unordered_map<AZ::EntityId, AZStd::unique_ptr<HammerWireframeMeshEntity>> m_meshEntities;
         float m_entityScanTimer = 0.0f;

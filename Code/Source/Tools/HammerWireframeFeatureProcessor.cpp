@@ -85,7 +85,7 @@ namespace Hammer
 
     void HammerWireframeFeatureProcessor::TrackEntity(EntityId entityId)
     {
-        m_meshEntities.emplace(entityId, AZStd::make_unique<HammerWireframeMeshEntity>(entityId, m_material));
+        m_meshEntities.emplace(entityId, AZStd::make_unique<HammerWireframeMeshEntity>(entityId, m_material, GetParentScene()));
     }
 
     void HammerWireframeFeatureProcessor::OnEditorEntityCreated(const EntityId& entityId)
@@ -96,6 +96,35 @@ namespace Hammer
     void HammerWireframeFeatureProcessor::OnEditorEntityDeleted(const EntityId& entityId)
     {
         m_meshEntities.erase(entityId);
+    }
+
+    void HammerWireframeFeatureProcessor::PruneDeadEntities()
+    {
+        // Undo/redo and prefab template reloads can destroy and recreate entities without
+        // reliably firing OnEditorEntityDeleted for the old instance, which would otherwise
+        // leak a stale tracked entry (and its GPU-side draw packet/SRG resources) forever.
+        AZStd::vector<EntityId> deadEntityIds;
+        for (const auto& [entityId, meshEntity] : m_meshEntities)
+        {
+            Entity* entity = nullptr;
+            ComponentApplicationBus::BroadcastResult(entity, &ComponentApplicationRequests::FindEntity, entityId);
+            if (!entity)
+            {
+                deadEntityIds.push_back(entityId);
+            }
+        }
+
+        for (const EntityId& entityId : deadEntityIds)
+        {
+            m_meshEntities.erase(entityId);
+        }
+
+        if (!deadEntityIds.empty())
+        {
+            AZ_Warning(
+                "HammerWireframeFeatureProcessor", false, "PruneDeadEntities: removed %zu stale entries, now tracking %zu entities",
+                deadEntityIds.size(), m_meshEntities.size());
+        }
     }
 
     void HammerWireframeFeatureProcessor::OnTick(float deltaTime, ScriptTimePoint)
@@ -110,6 +139,8 @@ namespace Hammer
         if (m_entityScanTimer >= ScanIntervalSeconds)
         {
             m_entityScanTimer = 0.0f;
+            PruneDeadEntities();
+
             const size_t beforeCount = m_meshEntities.size();
             ScanForNewEntities();
             if (m_meshEntities.size() != beforeCount)
