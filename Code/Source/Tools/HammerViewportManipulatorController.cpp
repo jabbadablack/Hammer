@@ -1,5 +1,6 @@
 #include "HammerViewportManipulatorController.h"
 
+#include <AzFramework/Entity/EntityDebugDisplayBus.h>
 #include <AzFramework/Input/Buses/Requests/InputSystemCursorRequestBus.h>
 #include <AzFramework/Input/Devices/Mouse/InputDeviceMouse.h>
 #include <AzFramework/Viewport/ScreenGeometry.h>
@@ -182,6 +183,20 @@ namespace Hammer
     void HammerViewportManipulatorControllerInstance::UpdateViewport(const AzFramework::ViewportControllerUpdateEvent& event)
     {
         m_currentTime = event.m_time;
+
+        // EditorInteractionSystemComponent::DisplayViewport (Code/Framework/AzToolsFramework/.../
+        // EditorInteractionSystemComponent.cpp) is the single, fully public handler that both
+        // populates the visible-entity pick cache used for selection and draws the shared
+        // ManipulatorManager's gizmos - it does all of this internally once this event fires for a
+        // given viewport, so no direct access to the manipulator manager is needed here.
+        AzFramework::DebugDisplayRequestBus::BusPtr debugDisplayBus;
+        AzFramework::DebugDisplayRequestBus::Bind(debugDisplayBus, GetViewportId());
+        if (AzFramework::DebugDisplayRequests* debugDisplay = AzFramework::DebugDisplayRequestBus::FindFirstHandler(debugDisplayBus))
+        {
+            AzFramework::ViewportDebugDisplayEventBus::Event(
+                AzToolsFramework::GetEntityContextId(), &AzFramework::ViewportDebugDisplayEvents::DisplayViewport,
+                AzFramework::ViewportInfo{ GetViewportId() }, *debugDisplay);
+        }
     }
 
     bool HammerViewportManipulatorControllerInstance::IsDoubleClick(AzToolsFramework::ViewportInteraction::MouseButton button) const

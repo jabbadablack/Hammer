@@ -4,20 +4,26 @@
 
 #include <Atom/RPI.Public/FeatureProcessorFactory.h>
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
+#include <AzToolsFramework/API/ViewPaneOptions.h>
 
+#include <QDockWidget>
 #include <QMainWindow>
 #include <QSettings>
-#include <QSplitter>
 #include <QWidget>
 
 #include "HammerEditorSystemComponent.h"
-#include "HammerWidget.h"
+#include "HammerViewportLayoutWidget.h"
 #include "HammerWireframeFeatureProcessor.h"
 
 #include <Hammer/HammerTypeIds.h>
 
 namespace Hammer
 {
+    namespace
+    {
+        constexpr const char* ViewportPaneName = "Hammer Viewport";
+    }
+
     AZ_COMPONENT_IMPL(HammerEditorSystemComponent, "HammerEditorSystemComponent",
         HammerEditorSystemComponentTypeId, BaseSystemComponent);
 
@@ -73,12 +79,24 @@ namespace Hammer
 
     void HammerEditorSystemComponent::Deactivate()
     {
-        // Not explicitly deleted: both widgets are owned by the Qt splitter/window hierarchy and
-        // are destroyed by Qt itself during Editor shutdown; deleting them again here raced with
-        // that teardown and crashed on exit.
-        m_hammerWidget = nullptr;
-        m_perspectiveWidget = nullptr;
-        HammerWireframeFeatureProcessor::SetWireframeWindow(nullptr);
+        // EmbedViewportInCenter() pulled m_viewportLayoutWidget out of m_paneDockWidget to use as
+        // the Editor's central widget directly; give it back before closing the pane through
+        // QtViewPaneManager, since QtViewPane::CloseInstance() sends a QCloseEvent to
+        // dockWidget->widget() - if that were still null (or pointing at nothing), the close path
+        // would dispatch to a null receiver.
+        if (m_paneDockWidget && m_viewportLayoutWidget)
+        {
+            m_viewportLayoutWidget->hide();
+            m_paneDockWidget->setWidget(m_viewportLayoutWidget);
+        }
+
+        // Closing/unregistering the pane lets QtViewPaneManager drive teardown order, the same
+        // way it does for every other Editor pane, instead of us manually nulling widget pointers.
+        AzToolsFramework::CloseViewPane(ViewportPaneName);
+        AzToolsFramework::UnregisterViewPane(ViewportPaneName);
+        m_paneDockWidget = nullptr;
+        m_viewportLayoutWidget = nullptr;
+        HammerWireframeFeatureProcessor::ClearWireframeWindows();
 
         AZ::RPI::FeatureProcessorFactory::Get()->UnregisterFeatureProcessor<HammerWireframeFeatureProcessor>();
 
@@ -88,16 +106,39 @@ namespace Hammer
 
     void HammerEditorSystemComponent::NotifyRegisterViews()
     {
-        // Hammer embeds its own viewport in the center area instead of registering a dockable pane.
+        // This is the Editor-startup point where the EditorRequests bus handler that actually
+        // implements pane registration (SandboxIntegrationManager) is guaranteed to be connected;
+        // registering from Activate() is too early and silently no-ops.
+        RegisterViewportPane();
     }
 
     void HammerEditorSystemComponent::NotifyEditorInitialized()
     {
-        EmbedViewportsInCenter();
+        EmbedViewportInCenter();
     }
 
-    void HammerEditorSystemComponent::EmbedViewportsInCenter()
+    void HammerEditorSystemComponent::RegisterViewportPane()
     {
+        AzToolsFramework::ViewPaneOptions viewOptions;
+        viewOptions.isDeletable = true;
+        viewOptions.showInMenu = true;
+        viewOptions.isDisabledInComponentMode = false;
+
+        AzToolsFramework::RegisterViewPane<QWidget>(
+            ViewportPaneName,
+            "Viewport",
+            viewOptions,
+            [this](QWidget* parent) -> QWidget*
+            {
+                m_viewportLayoutWidget = new HammerViewportLayoutWidget(parent);
+                return m_viewportLayoutWidget;
+            });
+    }
+
+    void HammerEditorSystemComponent::EmbedViewportInCenter()
+    {
+        AZ_Warning("HammerEditorSystemComponent", false, "EmbedViewportInCenter: starting");
+
         QWidget* mainWindowWidget = nullptr;
         AzToolsFramework::EditorRequestBus::BroadcastResult(mainWindowWidget, &AzToolsFramework::EditorRequests::GetMainWindow);
         AZ_Warning("HammerEditorSystemComponent", mainWindowWidget, "Could not get the Editor main window");
@@ -107,9 +148,9 @@ namespace Hammer
         }
 
         // EditorViewportWidget is a private Editor class, so it's found generically by its Qt
-        // class name rather than by including its header. It's only used here to locate the
-        // QMainWindow that hosts it - reparenting the widget itself broke its render pipeline
-        // (its swapchain wasn't recreated cleanly), so it's replaced outright instead.
+        // class name rather than by including its header. It's not a registered view pane (the
+        // real Editor never registers it as one - it's created directly as part of CLayoutWnd),
+        // so this walk is the only way to locate the QMainWindow that hosts it.
         QWidget* oldViewport = nullptr;
         for (QWidget* child : mainWindowWidget->findChildren<QWidget*>())
         {
@@ -124,8 +165,10 @@ namespace Hammer
         {
             return;
         }
+        AZ_Warning("HammerEditorSystemComponent", false, "EmbedViewportInCenter: found EditorViewportWidget");
 
         // Walk up to the QMainWindow whose central widget hosts the viewport (Code/Editor/MainWindow.cpp: m_viewPaneHost).
+        // This is the same QMainWindow that QtViewPaneManager docks every other pane into.
         QMainWindow* viewPaneHost = nullptr;
         for (QWidget* ancestor = oldViewport->parentWidget(); ancestor; ancestor = ancestor->parentWidget())
         {
@@ -140,16 +183,41 @@ namespace Hammer
         {
             return;
         }
+        AZ_Warning("HammerEditorSystemComponent", false, "EmbedViewportInCenter: found viewPaneHost");
 
-        QSplitter* splitter = new QSplitter(Qt::Horizontal, viewPaneHost);
-        m_perspectiveWidget = new HammerWidget(/*wireframe*/ false);
-        splitter->addWidget(m_perspectiveWidget);
-        m_hammerWidget = new HammerWidget(/*wireframe*/ true);
-        splitter->addWidget(m_hammerWidget);
+        m_paneDockWidget = AzToolsFramework::InstanceViewPane(ViewportPaneName);
+        AZ_Warning("HammerEditorSystemComponent", m_paneDockWidget, "Could not instance the '%s' view pane", ViewportPaneName);
+        if (!m_paneDockWidget)
+        {
+            return;
+        }
 
-        // Deletes the old CLayoutWnd (and the EditorViewportWidget inside it) - safe since
-        // nothing was extracted from it this time.
-        viewPaneHost->setCentralWidget(splitter);
+        QWidget* content = m_paneDockWidget->widget();
+        AZ_Warning("HammerEditorSystemComponent", content, "Instanced '%s' view pane has no content widget", ViewportPaneName);
+        if (!content)
+        {
+            return;
+        }
+
+        // The QDockWidget itself can never be shown as - or inside - the central widget: it was
+        // briefly tried directly (viewPaneHost->setCentralWidget(m_paneDockWidget)) and crashed as
+        // soon as it received a show event, because AzQtComponents::FancyDocking installs a global
+        // event filter (FancyDocking::UpdateTitleBars) that assumes every QDockWidget is either
+        // normally docked or hosted inside a genuine floating window, and null-derefs otherwise.
+        // So instead: pull the pane's plain content widget out and use *that* as the central
+        // widget - FancyDocking only reacts to QDockWidgets, not plain QWidgets, so this sidesteps
+        // it entirely. The now-empty m_paneDockWidget is detached from the normal dock-area layout
+        // and hidden (not deleted) purely so QtViewPaneManager's bookkeeping stays valid for the
+        // later CloseViewPane/UnregisterViewPane calls in Deactivate(), which restores content
+        // back into it first.
+        viewPaneHost->removeDockWidget(m_paneDockWidget);
+        m_paneDockWidget->hide();
+        m_paneDockWidget->setWidget(nullptr);
+
+        // Deletes the old CLayoutWnd (and the EditorViewportWidget inside it) as a side effect of
+        // becoming the new central widget.
+        viewPaneHost->setCentralWidget(content);
+        content->show();
     }
 
 } // namespace Hammer

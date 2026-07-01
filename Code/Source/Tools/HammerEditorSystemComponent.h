@@ -7,9 +7,11 @@
 
 #include <QPointer>
 
+class QDockWidget;
+
 namespace Hammer
 {
-    class HammerWidget;
+    class HammerViewportLayoutWidget;
 
     /// System component for Hammer editor
     class HammerEditorSystemComponent
@@ -39,11 +41,21 @@ namespace Hammer
         void NotifyRegisterViews() override;
         void NotifyEditorInitialized() override;
 
-        // Replaces the old perspective pane with two HammerWidget instances (one lit, one
-        // wireframe) in a splitter occupying the center area.
-        void EmbedViewportsInCenter();
+        // Registers Hammer's viewport (a HammerViewportLayoutWidget hosting 1-4 viewports) as a
+        // normal AzToolsFramework view pane, so Qt's own QtViewPaneManager owns its
+        // creation/teardown, and it shows up as a toggleable entry in the Tools menu. Must run
+        // from NotifyRegisterViews() (not Activate()) - that's the point in Editor startup when
+        // the EditorRequests bus handler that actually implements pane registration is guaranteed
+        // to be connected; registering earlier silently no-ops and later InstanceViewPane calls
+        // fail to find the pane.
+        void RegisterViewportPane();
 
-        QPointer<HammerWidget> m_perspectiveWidget;
-        QPointer<HammerWidget> m_hammerWidget;
+        // Instances the registered pane and swaps it in as the center content, replacing the
+        // real perspective viewport (which isn't itself a registered pane, so it can only be
+        // located by walking the widget hierarchy).
+        void EmbedViewportInCenter();
+
+        QPointer<HammerViewportLayoutWidget> m_viewportLayoutWidget;
+        QPointer<QDockWidget> m_paneDockWidget;
     };
 } // namespace Hammer

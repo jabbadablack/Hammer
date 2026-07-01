@@ -8,6 +8,7 @@
 #include <AzFramework/Windowing/WindowBus.h>
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 #include <AzCore/std/containers/unordered_map.h>
+#include <AzCore/std/containers/unordered_set.h>
 #include <AzCore/std/smart_ptr/unique_ptr.h>
 
 namespace Hammer
@@ -34,8 +35,12 @@ namespace Hammer
         void Render(const RenderPacket& packet) override;
         void AddRenderPasses(AZ::RPI::RenderPipeline* renderPipeline) override;
 
-        // Marks which viewport's pipeline should receive the wireframe overlay pass; only one at a time is supported.
-        static void SetWireframeWindow(AzFramework::NativeWindowHandle windowHandle);
+        // Marks a viewport's pipeline as one that should receive the wireframe overlay pass.
+        // Hammer can show several wireframe viewports at once, so multiple windows may be
+        // registered simultaneously.
+        static void AddWireframeWindow(AzFramework::NativeWindowHandle windowHandle);
+        static void RemoveWireframeWindow(AzFramework::NativeWindowHandle windowHandle);
+        static void ClearWireframeWindows();
 
     private:
         // EditorEntityContextNotificationBus overrides ...
@@ -62,6 +67,6 @@ namespace Hammer
         AZStd::unordered_map<AZ::EntityId, AZStd::unique_ptr<HammerWireframeMeshEntity>> m_meshEntities;
         float m_entityScanTimer = 0.0f;
 
-        static AzFramework::NativeWindowHandle s_wireframeWindowHandle;
+        static AZStd::unordered_set<AzFramework::NativeWindowHandle> s_wireframeWindowHandles;
     };
 } // namespace Hammer

@@ -207,11 +207,21 @@ namespace Hammer
         }
     }
 
-    AzFramework::NativeWindowHandle HammerWireframeFeatureProcessor::s_wireframeWindowHandle = nullptr;
+    AZStd::unordered_set<AzFramework::NativeWindowHandle> HammerWireframeFeatureProcessor::s_wireframeWindowHandles;
 
-    void HammerWireframeFeatureProcessor::SetWireframeWindow(AzFramework::NativeWindowHandle windowHandle)
+    void HammerWireframeFeatureProcessor::AddWireframeWindow(AzFramework::NativeWindowHandle windowHandle)
     {
-        s_wireframeWindowHandle = windowHandle;
+        s_wireframeWindowHandles.insert(windowHandle);
+    }
+
+    void HammerWireframeFeatureProcessor::RemoveWireframeWindow(AzFramework::NativeWindowHandle windowHandle)
+    {
+        s_wireframeWindowHandles.erase(windowHandle);
+    }
+
+    void HammerWireframeFeatureProcessor::ClearWireframeWindows()
+    {
+        s_wireframeWindowHandles.clear();
     }
 
     // Appends a wireframe RasterPass onto an already-built default pipeline, reading (not
@@ -220,7 +230,7 @@ namespace Hammer
     // EditorModeFeedback/Code/Source/Pass/EditorStatePassSystem.cpp::AddPassesToRenderPipeline.
     void HammerWireframeFeatureProcessor::AddRenderPasses(RPI::RenderPipeline* renderPipeline)
     {
-        if (renderPipeline->GetWindowHandle() != s_wireframeWindowHandle)
+        if (s_wireframeWindowHandles.find(renderPipeline->GetWindowHandle()) == s_wireframeWindowHandles.end())
         {
             return;
         }
