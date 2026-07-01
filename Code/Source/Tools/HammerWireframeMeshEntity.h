@@ -8,6 +8,7 @@
 #include <AtomLyIntegration/CommonFeatures/Mesh/MeshHandleStateBus.h>
 #include <AzCore/Component/TransformBus.h>
 #include <AzCore/std/containers/vector.h>
+#include <AzToolsFramework/ToolsComponents/EditorVisibilityBus.h>
 
 namespace Hammer
 {
@@ -35,6 +36,7 @@ namespace Hammer
         : private AZ::Render::MeshHandleStateNotificationBus::Handler
         , private AZ::Render::MeshComponentNotificationBus::Handler
         , private AZ::TransformNotificationBus::Handler
+        , private AzToolsFramework::EditorEntityVisibilityNotificationBus::Handler
     {
     public:
         HammerWireframeMeshEntity(AZ::EntityId entityId, AZ::Data::Instance<AZ::RPI::Material> material, AZ::RPI::Scene* scene);
@@ -58,6 +60,12 @@ namespace Hammer
         // TransformNotificationBus overrides ...
         void OnTransformChanged(const AZ::Transform& localTM, const AZ::Transform& worldTM) override;
 
+        // EditorEntityVisibilityNotificationBus overrides ...
+        // Reflects the entity's *computed* visibility (own flag combined with ancestor/prefab
+        // state), so hiding a parent entity or prefab instance hides this mesh too, not just
+        // hiding the entity directly.
+        void OnEntityVisibilityChanged(bool visibility) override;
+
         void CreateOrUpdateDrawPackets(
             AZ::Render::MeshFeatureProcessorInterface* featureProcessor, const AZ::Data::Instance<AZ::RPI::Model>& model);
         void ClearDrawData();
@@ -70,5 +78,6 @@ namespace Hammer
         AZ::Data::Instance<AZ::RPI::Material> m_material;
         AZStd::vector<HammerWireframeDrawPacket> m_drawPackets;
         AZ::Transform m_cachedWorldTM = AZ::Transform::CreateIdentity();
+        bool m_isVisible = true;
     };
 } // namespace Hammer

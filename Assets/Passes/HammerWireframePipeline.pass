@@ -16,10 +16,21 @@
                 {
                     "Name": "HammerWireframePass",
                     "TemplateName": "HammerWireframePassTemplate",
-                    "Enabled": true,
+                    "Enabled": true
+                },
+                {
+                    "Name": "CopyToSwapChain",
+                    "TemplateName": "FullscreenCopyTemplate",
                     "Connections": [
                         {
-                            "LocalSlot": "LightingOutput",
+                            "LocalSlot": "Input",
+                            "AttachmentRef": {
+                                "Pass": "HammerWireframePass",
+                                "Attachment": "LightingOutput"
+                            }
+                        },
+                        {
+                            "LocalSlot": "Output",
                             "AttachmentRef": {
                                 "Pass": "Parent",
                                 "Attachment": "PipelineOutput"

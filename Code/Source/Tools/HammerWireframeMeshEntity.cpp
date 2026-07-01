@@ -7,6 +7,7 @@
 #include <AzCore/Component/TransformBus.h>
 #include <AzCore/Math/Color.h>
 #include <AzCore/Math/MathUtils.h>
+#include <AzToolsFramework/Entity/EditorEntityInfoBus.h>
 
 namespace Hammer
 {
@@ -38,13 +39,20 @@ namespace Hammer
         TransformBus::EventResult(worldTM, m_entityId, &TransformBus::Events::GetWorldTM);
         m_cachedWorldTM = worldTM;
 
+        // IsVisible() reflects the entity's *computed* visibility (own flag combined with
+        // ancestor/prefab state), matching what OnEntityVisibilityChanged notifies about.
+        AzToolsFramework::EditorEntityInfoRequestBus::EventResult(
+            m_isVisible, m_entityId, &AzToolsFramework::EditorEntityInfoRequestBus::Events::IsVisible);
+
         TransformNotificationBus::Handler::BusConnect(m_entityId);
         Render::MeshComponentNotificationBus::Handler::BusConnect(m_entityId);
         Render::MeshHandleStateNotificationBus::Handler::BusConnect(m_entityId);
+        AzToolsFramework::EditorEntityVisibilityNotificationBus::Handler::BusConnect(m_entityId);
     }
 
     HammerWireframeMeshEntity::~HammerWireframeMeshEntity()
     {
+        AzToolsFramework::EditorEntityVisibilityNotificationBus::Handler::BusDisconnect();
         Render::MeshHandleStateNotificationBus::Handler::BusDisconnect();
         Render::MeshComponentNotificationBus::Handler::BusDisconnect();
         TransformNotificationBus::Handler::BusDisconnect();
@@ -55,14 +63,22 @@ namespace Hammer
         m_cachedWorldTM = worldTM;
     }
 
+    void HammerWireframeMeshEntity::OnEntityVisibilityChanged(bool visibility)
+    {
+        m_isVisible = visibility;
+    }
+
     bool HammerWireframeMeshEntity::CanDraw() const
     {
-        return !m_drawPackets.empty();
+        return !m_drawPackets.empty() && m_isVisible;
     }
 
     void HammerWireframeMeshEntity::RetryIfNotYetDrawable()
     {
-        if (CanDraw())
+        // Deliberately not CanDraw(): that also factors in current visibility, and a hidden
+        // entity that already has draw packets built shouldn't have them torn down and rebuilt
+        // every tick just because it's hidden right now.
+        if (!m_drawPackets.empty())
         {
             return;
         }

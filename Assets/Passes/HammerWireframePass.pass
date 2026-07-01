@@ -49,6 +49,19 @@
                         "Format": "D32_FLOAT_S8X24_UINT",
                         "SharedQueueMask": "Graphics"
                     }
+                },
+                {
+                    "Name": "ColorAttachment",
+                    "SizeSource": {
+                        "Source": {
+                            "Pass": "Parent",
+                            "Attachment": "PipelineOutput"
+                        }
+                    },
+                    "ImageDescriptor": {
+                        "Format": "R8G8B8A8_UNORM",
+                        "SharedQueueMask": "Graphics"
+                    }
                 }
             ],
             "Connections": [
@@ -57,6 +70,13 @@
                     "AttachmentRef": {
                         "Pass": "This",
                         "Attachment": "DepthAttachment"
+                    }
+                },
+                {
+                    "LocalSlot": "LightingOutput",
+                    "AttachmentRef": {
+                        "Pass": "This",
+                        "Attachment": "ColorAttachment"
                     }
                 }
             ],
