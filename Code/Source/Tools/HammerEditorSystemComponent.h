@@ -3,12 +3,9 @@
 
 #include <Clients/HammerSystemComponent.h>
 
-#include <Atom/RPI.Public/Pass/PassSystemInterface.h>
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 
 #include <QPointer>
-
-class QWidget;
 
 namespace Hammer
 {
@@ -42,12 +39,11 @@ namespace Hammer
         void NotifyRegisterViews() override;
         void NotifyEditorInitialized() override;
 
-        // Pops the Editor's real main viewport widget into its own top-level window, then creates
-        // Hammer's own viewport window beside it.
-        void SplitIntoViewportWindows();
+        // Replaces the old perspective pane with two HammerWidget instances (one lit, one
+        // wireframe) in a splitter occupying the center area.
+        void EmbedViewportsInCenter();
 
-        AZ::RPI::PassSystemInterface::OnReadyLoadTemplatesEvent::Handler m_loadTemplatesHandler;
-        QPointer<QWidget> m_mainViewportWidget;
+        QPointer<HammerWidget> m_perspectiveWidget;
         QPointer<HammerWidget> m_hammerWidget;
     };
 } // namespace Hammer

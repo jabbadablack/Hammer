@@ -3,7 +3,6 @@
 
 #if !defined(Q_MOC_RUN)
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
-#include <Atom/RPI.Public/Base.h>
 #include <AzFramework/Viewport/ViewportId.h>
 
 #include <QWidget>
@@ -19,8 +18,9 @@ namespace Hammer
     {
     Q_OBJECT
     public:
-        explicit HammerWidget(QWidget* parent = nullptr);
-        ~HammerWidget() override;
+        // wireframe enables Hammer's wireframe overlay on top of the normal default rendering.
+        explicit HammerWidget(bool wireframe = true, QWidget* parent = nullptr);
+        ~HammerWidget() override = default;
 
     protected:
         void resizeEvent(QResizeEvent* event) override;
@@ -29,7 +29,6 @@ namespace Hammer
         void FollowMainViewportCamera();
         void RepositionFollowCameraButton();
 
-        AZ::RPI::RenderPipelinePtr m_pipeline;
         AzFramework::ViewportId m_viewportId = AzFramework::InvalidViewportId;
         QPushButton* m_followMainCameraButton = nullptr;
     };

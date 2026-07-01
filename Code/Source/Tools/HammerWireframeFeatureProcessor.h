@@ -5,6 +5,7 @@
 #include <Atom/RPI.Public/FeatureProcessor.h>
 #include <AzCore/Component/EntityId.h>
 #include <AzCore/Component/TickBus.h>
+#include <AzFramework/Windowing/WindowBus.h>
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 #include <AzCore/std/containers/unordered_map.h>
 #include <AzCore/std/smart_ptr/unique_ptr.h>
@@ -31,6 +32,10 @@ namespace Hammer
         void Activate() override;
         void Deactivate() override;
         void Render(const RenderPacket& packet) override;
+        void AddRenderPasses(AZ::RPI::RenderPipeline* renderPipeline) override;
+
+        // Marks which viewport's pipeline should receive the wireframe overlay pass; only one at a time is supported.
+        static void SetWireframeWindow(AzFramework::NativeWindowHandle windowHandle);
 
     private:
         // EditorEntityContextNotificationBus overrides ...
@@ -56,5 +61,7 @@ namespace Hammer
         AZ::Data::Instance<AZ::RPI::Material> m_material;
         AZStd::unordered_map<AZ::EntityId, AZStd::unique_ptr<HammerWireframeMeshEntity>> m_meshEntities;
         float m_entityScanTimer = 0.0f;
+
+        static AzFramework::NativeWindowHandle s_wireframeWindowHandle;
     };
 } // namespace Hammer

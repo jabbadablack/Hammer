@@ -1,8 +1,14 @@
 #include "HammerWireframeFeatureProcessor.h"
 
+#include <Atom/RHI.Reflect/AttachmentEnums.h>
 #include <Atom/RPI.Public/Material/Material.h>
+#include <Atom/RPI.Public/Pass/PassFilter.h>
+#include <Atom/RPI.Public/Pass/PassSystemInterface.h>
+#include <Atom/RPI.Public/RenderPipeline.h>
 #include <Atom/RPI.Reflect/Asset/AssetUtils.h>
 #include <Atom/RPI.Reflect/Material/MaterialAsset.h>
+#include <Atom/RPI.Reflect/Pass/PassTemplate.h>
+#include <Atom/RPI.Reflect/Pass/RasterPassData.h>
 #include <AzCore/Component/ComponentApplicationBus.h>
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzFramework/Entity/EntityContextBus.h>
@@ -199,5 +205,89 @@ namespace Hammer
                 meshEntity->Draw();
             }
         }
+    }
+
+    AzFramework::NativeWindowHandle HammerWireframeFeatureProcessor::s_wireframeWindowHandle = nullptr;
+
+    void HammerWireframeFeatureProcessor::SetWireframeWindow(AzFramework::NativeWindowHandle windowHandle)
+    {
+        s_wireframeWindowHandle = windowHandle;
+    }
+
+    // Appends a wireframe RasterPass onto an already-built default pipeline, reading (not
+    // clearing) its existing color/depth output, so wireframe draws on top of normal rendering
+    // instead of needing its own standalone pipeline. Modeled on
+    // EditorModeFeedback/Code/Source/Pass/EditorStatePassSystem.cpp::AddPassesToRenderPipeline.
+    void HammerWireframeFeatureProcessor::AddRenderPasses(RPI::RenderPipeline* renderPipeline)
+    {
+        if (renderPipeline->GetWindowHandle() != s_wireframeWindowHandle)
+        {
+            return;
+        }
+
+        const Name passName("HammerWireframeOverlay");
+        if (renderPipeline->FindFirstPass(passName))
+        {
+            return;
+        }
+
+        const Name postProcessPassName("PostProcessPass");
+        const Name depthPrePassName("DepthPrePass");
+        if (!renderPipeline->FindFirstPass(postProcessPassName) || !renderPipeline->FindFirstPass(depthPrePassName))
+        {
+            AZ_Warning(
+                "HammerWireframeFeatureProcessor", false,
+                "PostProcessPass/DepthPrePass not found in render pipeline; wireframe overlay disabled");
+            return;
+        }
+
+        const Name templateName("HammerWireframeOverlayTemplate");
+        auto passTemplate = RPI::PassSystemInterface::Get()->GetPassTemplate(templateName);
+        if (!passTemplate)
+        {
+            auto newTemplate = AZStd::make_shared<RPI::PassTemplate>();
+            newTemplate->m_name = templateName;
+            newTemplate->m_passClass = Name("RasterPass");
+
+            RPI::PassSlot colorSlot;
+            colorSlot.m_name = Name("ColorInputOutput");
+            colorSlot.m_slotType = RPI::PassSlotType::InputOutput;
+            colorSlot.m_scopeAttachmentUsage = RHI::ScopeAttachmentUsage::RenderTarget;
+            newTemplate->AddSlot(colorSlot);
+
+            RPI::PassSlot depthSlot;
+            depthSlot.m_name = Name("InputDepth");
+            depthSlot.m_slotType = RPI::PassSlotType::Input;
+            depthSlot.m_scopeAttachmentUsage = RHI::ScopeAttachmentUsage::DepthStencil;
+            newTemplate->AddSlot(depthSlot);
+
+            auto passData = AZStd::make_shared<RPI::RasterPassData>();
+            passData->m_drawListTag = Name("hammerwireframe");
+            passData->m_pipelineViewTag = Name("MainCamera");
+            passData->m_bindViewSrg = true;
+            newTemplate->m_passData = passData;
+
+            RPI::PassSystemInterface::Get()->AddPassTemplate(templateName, newTemplate);
+            passTemplate = newTemplate;
+        }
+
+        RPI::PassRequest passRequest;
+        passRequest.m_passName = passName;
+        passRequest.m_templateName = templateName;
+        passRequest.AddInputConnection(
+            RPI::PassConnection{ Name("ColorInputOutput"), RPI::PassAttachmentRef{ postProcessPassName, Name("Output") } });
+        passRequest.AddInputConnection(
+            RPI::PassConnection{ Name("InputDepth"), RPI::PassAttachmentRef{ depthPrePassName, Name("Depth") } });
+
+        RPI::Ptr<RPI::Pass> pass = RPI::PassSystemInterface::Get()->CreatePassFromRequest(&passRequest);
+        AZ_Error("HammerWireframeFeatureProcessor", pass, "Failed to create the wireframe overlay pass from request");
+        if (!pass)
+        {
+            return;
+        }
+
+        AZ_Error(
+            "HammerWireframeFeatureProcessor", renderPipeline->AddPassAfter(pass, postProcessPassName),
+            "Failed to add the wireframe overlay pass to the render pipeline");
     }
 } // namespace Hammer

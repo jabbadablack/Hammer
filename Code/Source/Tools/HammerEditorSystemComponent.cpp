@@ -5,9 +5,9 @@
 #include <Atom/RPI.Public/FeatureProcessorFactory.h>
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
 
-#include <QLayout>
-#include <QScreen>
+#include <QMainWindow>
 #include <QSettings>
+#include <QSplitter>
 #include <QWidget>
 
 #include "HammerEditorSystemComponent.h"
@@ -65,13 +65,6 @@ namespace Hammer
 
         AZ::RPI::FeatureProcessorFactory::Get()->RegisterFeatureProcessor<HammerWireframeFeatureProcessor>();
 
-        m_loadTemplatesHandler = AZ::RPI::PassSystemInterface::OnReadyLoadTemplatesEvent::Handler(
-            []()
-            {
-                AZ::RPI::PassSystemInterface::Get()->LoadPassTemplateMappings("Passes/HammerWireframePasses.azasset");
-            });
-        AZ::RPI::PassSystemInterface::Get()->ConnectEvent(m_loadTemplatesHandler);
-
         // Clears a stale "Layout" value an earlier version of this Gem left in the Windows
         // registry, which otherwise leaves CLayoutWnd in a broken state at startup.
         QSettings settings;
@@ -80,12 +73,12 @@ namespace Hammer
 
     void HammerEditorSystemComponent::Deactivate()
     {
-        if (m_hammerWidget)
-        {
-            delete m_hammerWidget;
-        }
+        // Not explicitly deleted: both widgets are owned by the Qt splitter/window hierarchy and
+        // are destroyed by Qt itself during Editor shutdown; deleting them again here raced with
+        // that teardown and crashed on exit.
+        m_hammerWidget = nullptr;
+        m_perspectiveWidget = nullptr;
 
-        m_loadTemplatesHandler.Disconnect();
         AZ::RPI::FeatureProcessorFactory::Get()->UnregisterFeatureProcessor<HammerWireframeFeatureProcessor>();
 
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
@@ -94,15 +87,15 @@ namespace Hammer
 
     void HammerEditorSystemComponent::NotifyRegisterViews()
     {
-        // Hammer builds its own top-level viewport window instead of registering a dockable pane.
+        // Hammer embeds its own viewport in the center area instead of registering a dockable pane.
     }
 
     void HammerEditorSystemComponent::NotifyEditorInitialized()
     {
-        SplitIntoViewportWindows();
+        EmbedViewportsInCenter();
     }
 
-    void HammerEditorSystemComponent::SplitIntoViewportWindows()
+    void HammerEditorSystemComponent::EmbedViewportsInCenter()
     {
         QWidget* mainWindowWidget = nullptr;
         AzToolsFramework::EditorRequestBus::BroadcastResult(mainWindowWidget, &AzToolsFramework::EditorRequests::GetMainWindow);
@@ -113,49 +106,49 @@ namespace Hammer
         }
 
         // EditorViewportWidget is a private Editor class, so it's found generically by its Qt
-        // class name rather than by including its header.
+        // class name rather than by including its header. It's only used here to locate the
+        // QMainWindow that hosts it - reparenting the widget itself broke its render pipeline
+        // (its swapchain wasn't recreated cleanly), so it's replaced outright instead.
+        QWidget* oldViewport = nullptr;
         for (QWidget* child : mainWindowWidget->findChildren<QWidget*>())
         {
             if (AZStd::string_view(child->metaObject()->className()) == "EditorViewportWidget")
             {
-                m_mainViewportWidget = child;
+                oldViewport = child;
                 break;
             }
         }
-        AZ_Warning("HammerEditorSystemComponent", m_mainViewportWidget, "Could not find the main EditorViewportWidget");
-        if (!m_mainViewportWidget)
+        AZ_Warning("HammerEditorSystemComponent", oldViewport, "Could not find the main EditorViewportWidget");
+        if (!oldViewport)
         {
             return;
         }
 
-        QScreen* screen = mainWindowWidget->screen();
-        AZ_Warning("HammerEditorSystemComponent", screen, "Could not get the screen the Editor main window is on");
-        if (!screen)
+        // Walk up to the QMainWindow whose central widget hosts the viewport (Code/Editor/MainWindow.cpp: m_viewPaneHost).
+        QMainWindow* viewPaneHost = nullptr;
+        for (QWidget* ancestor = oldViewport->parentWidget(); ancestor; ancestor = ancestor->parentWidget())
         {
-            return;
-        }
-
-        const QRect available = screen->availableGeometry();
-        const QRect leftHalf(available.left(), available.top(), available.width() / 2, available.height());
-        const QRect rightHalf(
-            available.left() + available.width() / 2, available.top(), available.width() - available.width() / 2, available.height());
-
-        if (QWidget* oldParent = m_mainViewportWidget->parentWidget())
-        {
-            if (QLayout* oldLayout = oldParent->layout())
+            if (QMainWindow* mainWindow = qobject_cast<QMainWindow*>(ancestor))
             {
-                oldLayout->removeWidget(m_mainViewportWidget);
+                viewPaneHost = mainWindow;
+                break;
             }
         }
-        m_mainViewportWidget->setParent(nullptr);
-        m_mainViewportWidget->setWindowFlags(Qt::Window);
-        m_mainViewportWidget->show();
-        m_mainViewportWidget->setGeometry(leftHalf);
+        AZ_Warning("HammerEditorSystemComponent", viewPaneHost, "Could not find the QMainWindow hosting the main viewport");
+        if (!viewPaneHost)
+        {
+            return;
+        }
 
-        m_hammerWidget = new HammerWidget();
-        m_hammerWidget->setWindowTitle("Hammer");
-        m_hammerWidget->show();
-        m_hammerWidget->setGeometry(rightHalf);
+        QSplitter* splitter = new QSplitter(Qt::Horizontal, viewPaneHost);
+        m_perspectiveWidget = new HammerWidget(/*wireframe*/ false);
+        splitter->addWidget(m_perspectiveWidget);
+        m_hammerWidget = new HammerWidget(/*wireframe*/ true);
+        splitter->addWidget(m_hammerWidget);
+
+        // Deletes the old CLayoutWnd (and the EditorViewportWidget inside it) - safe since
+        // nothing was extracted from it this time.
+        viewPaneHost->setCentralWidget(splitter);
     }
 
 } // namespace Hammer
