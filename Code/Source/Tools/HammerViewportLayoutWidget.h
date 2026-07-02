@@ -75,5 +75,6 @@ namespace Hammer
         QTimer* m_realViewportSyncTimer = nullptr;
         AZ::RPI::ViewportContextPtr m_hiddenRealViewportContext;
         QWidget* m_viewportUiOverlayWindow = nullptr;
+        bool m_realInternalRenderViewportDisabled = false;
     };
 } // namespace Hammer

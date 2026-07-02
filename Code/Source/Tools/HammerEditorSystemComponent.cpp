@@ -17,6 +17,7 @@
 #include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 #include <AzFramework/Windowing/WindowBus.h>
+#include <AzToolsFramework/Viewport/ViewportSettings.h>
 
 #include "HammerEditorSystemComponent.h"
 #include "HammerViewportLayoutWidget.h"
@@ -154,10 +155,33 @@ namespace Hammer
         // deletes its extra "Perspective" instances instead of just hiding them, so this shouldn't
         // recur, but this clears out any already-corrupted state from before that fix.
         settings.remove("Editor/fancyWindowLayouts/last");
+
+        // The real Editor viewport (kept alive, permanently off-screen - see
+        // HammerViewportLayoutWidget::SetHiddenRealViewport()) submits entity-icon draw requests
+        // for itself every frame, unconditionally, via a private SceneNotificationBus hook
+        // (EditorViewportWidget::RenderAll(), confirmed by direct source reading to be gated only
+        // on IsInGameMode(), not by Qt visibility or its own input-processing state). Its own
+        // AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::IconsVisible() handler
+        // (Code/Editor/EditorViewportWidget.cpp's EditorViewportSettings) just reads this same
+        // global AzToolsFramework::IconsVisible() preference - the only lever available to suppress
+        // it, since that handler is Editor-private and already registered (stealing its EBus slot
+        // risks corrupting HandlerPolicy::Single's internal state when it later tries to disconnect
+        // itself). Forcing this off here is what actually stops the real viewport from submitting
+        // icons; HammerViewportManipulatorControllerInstance::IconsVisible() (Code/Source/Tools/
+        // HammerViewportManipulatorController.cpp) deliberately does NOT read this same global
+        // value, so Hammer's own active viewport keeps showing icons regardless. Captured/restored
+        // (see Deactivate()) rather than hardcoded, so the user's actual underlying preference isn't
+        // silently lost for the rest of the Editor session if Hammer's pane is ever closed.
+        m_originalIconsVisiblePreference = AzToolsFramework::IconsVisible();
+        AzToolsFramework::SetIconsVisible(false);
     }
 
     void HammerEditorSystemComponent::Deactivate()
     {
+        // See EmbedViewportInCenter() for why this was forced off; restores whatever the user's
+        // own preference actually was before Hammer touched it.
+        AzToolsFramework::SetIconsVisible(m_originalIconsVisiblePreference);
+
         if (m_viewportFilter)
         {
             if (qApp)

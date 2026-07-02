@@ -2,6 +2,7 @@
 #include "HammerWidget.h"
 
 #include <AzCore/std/algorithm.h>
+#include <AzCore/std/string/string_view.h>
 #include <Atom/RPI.Public/ViewportContext.h>
 #include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
@@ -47,9 +48,14 @@ namespace Hammer
 
         SetViewportCount(4);
 
+        // ~60Hz rather than a coarser interval - the ViewportUi overlay's position is corrected
+        // immediately via eventFilter() below, but its *size* (and the real viewport's mirrored
+        // camera - see SyncRealViewportToActive()) only updates on this timer, so a tighter interval
+        // keeps both from visibly lagging behind the active viewport while switching viewports or
+        // resizing the grid.
         m_realViewportSyncTimer = new QTimer(this);
         connect(m_realViewportSyncTimer, &QTimer::timeout, this, &HammerViewportLayoutWidget::SyncRealViewportToActive);
-        m_realViewportSyncTimer->start(100);
+        m_realViewportSyncTimer->start(16);
     }
 
     void HammerViewportLayoutWidget::SetViewportCount(int count)
@@ -158,6 +164,11 @@ namespace Hammer
         realViewport->show();
         m_hiddenRealViewport = realViewport;
 
+        // The real viewport's own internal RenderViewportWidget child (EditorViewportWidget's
+        // m_renderViewport) doesn't exist yet at this point - it's constructed later, in
+        // EditorViewportWidget::SetViewportId(), which runs after this function during Editor
+        // startup. Finding and disabling it is deferred to SyncRealViewportToActive(), which
+        // retries every tick until found - see the comment there for the full rationale.
         if (auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get())
         {
             m_hiddenRealViewportContext = viewportContextManager->GetViewportContextByName(AZ::Name("Hammer Hidden Perspective Viewport"));
@@ -213,6 +224,50 @@ namespace Hammer
             if (m_viewportUiOverlayWindow)
             {
                 m_viewportUiOverlayWindow->installEventFilter(this);
+            }
+        }
+
+        // EditorViewportWidget (Editor-private) constructs its own camera/manipulator controller
+        // stack on a plain, fully public AtomToolsFramework::RenderViewportWidget child
+        // (Code/Editor/EditorViewportWidget.cpp:799: "m_renderViewport = new
+        // AtomToolsFramework::RenderViewportWidget(this, false);" - not subclassed, so it's findable
+        // here by its exact Qt class name, the same technique used to find oldViewport itself in
+        // HammerEditorSystemComponent::EmbedViewportInCenter()). It doesn't exist yet when
+        // SetHiddenRealViewport() runs (EditorViewportWidget::SetViewportId(), which constructs it,
+        // hasn't run yet at that point in Editor startup - confirmed by an AZ_Error that fired every
+        // time findChildren was tried there), so retried here every tick until found, then cached.
+        // Being genuinely visible (see SetHiddenRealViewport()) means that controller stack would
+        // otherwise keep actively ticking every frame and independently broadcasting
+        // AzFramework::ViewportDebugDisplayEventBus::DisplayViewport for viewport 0, which - combined
+        // with a confirmed engine bug where AZ::RPI::DynamicDrawContext's RenderPipeline output scope
+        // is actually implemented as Scene output scope (Gems/Atom/RPI/Code/Source/RPI.Public/
+        // DynamicDraw/DynamicDrawContext.cpp's EndInit() submits to the scene-level draw list for
+        // both RenderPipeline and Scene scope types, discarding which specific pipeline was meant) -
+        // causes its entity-icon submissions to render into every viewport pipeline sharing this
+        // Gem's scene, not just its own. SetInputProcessingEnabled(false) - the exact same public API
+        // EditorViewportWidget itself calls on this widget to freeze its camera during Play Game mode
+        // (EditorViewportWidget.cpp:606) - stops that controller stack's ticking entirely, without
+        // touching QtViewport::Update()/m_viewportUi.Update() (owned by EditorViewportWidget itself,
+        // not by this child widget), so the ViewportUi overlay fix is unaffected. This does not fully
+        // solve entity icons appearing in every Hammer viewport - that's the DynamicDrawContext
+        // engine bug above, which no public API can work around - but it does stop this from being a
+        // second, redundant submission source on top of Hammer's own (active-viewport-only) one.
+        if (!m_realInternalRenderViewportDisabled)
+        {
+            for (QWidget* child : m_hiddenRealViewport->findChildren<QWidget*>())
+            {
+                if (AZStd::string_view(child->metaObject()->className()) == "RenderViewportWidget")
+                {
+                    // qobject_cast can't be used here - AtomToolsFramework::RenderViewportWidget
+                    // doesn't declare its own Q_OBJECT macro, so Qt's moc-based RTTI doesn't cover
+                    // it directly. The exact-className() match above already confirms child is
+                    // genuinely an instance of this type (not a subclass, matching
+                    // EditorViewportWidget.cpp:799's direct, non-subclassed construction), so a
+                    // static_cast is safe here.
+                    static_cast<AtomToolsFramework::RenderViewportWidget*>(child)->SetInputProcessingEnabled(false);
+                    m_realInternalRenderViewportDisabled = true;
+                    break;
+                }
             }
         }
     }

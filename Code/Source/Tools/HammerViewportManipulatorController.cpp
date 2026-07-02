@@ -5,6 +5,8 @@
 #include <AzFramework/Input/Devices/Mouse/InputDeviceMouse.h>
 #include <AzFramework/Viewport/ScreenGeometry.h>
 #include <AzFramework/Viewport/ViewportScreen.h>
+#include <AzToolsFramework/API/SettingsRegistryUtils.h>
+#include <AzToolsFramework/Viewport/ViewportSettings.h>
 #include <AzToolsFramework/ViewportSelection/EditorInteractionSystemViewportSelectionRequestBus.h>
 #include <AzToolsFramework/ViewportSelection/EditorSelectionUtil.h>
 #include <AzToolsFramework/Viewport/ViewportInteractionHelpers.h>
@@ -16,21 +18,121 @@ namespace Hammer
     static const auto ManipulatorPriority = AzFramework::ViewportControllerPriority::Highest;
     static const auto InteractionPriority = AzFramework::ViewportControllerPriority::High;
 
+    namespace
+    {
+        AzFramework::ViewportId g_activeHammerViewportId = AzFramework::InvalidViewportId;
+    }
+
+    void SetActiveHammerViewportId(AzFramework::ViewportId viewportId)
+    {
+        g_activeHammerViewportId = viewportId;
+    }
+
+    AzFramework::ViewportId GetActiveHammerViewportId()
+    {
+        return g_activeHammerViewportId;
+    }
+
     HammerViewportManipulatorControllerInstance::HammerViewportManipulatorControllerInstance(
         AzFramework::ViewportId viewport, HammerViewportManipulatorController* controller)
         : AzFramework::MultiViewportControllerInstanceInterface<HammerViewportManipulatorController>(viewport, controller)
     {
         AzToolsFramework::ViewportInteraction::EditorEntityViewportInteractionRequestBus::Handler::BusConnect(viewport);
+        AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler::BusConnect(viewport);
     }
 
     HammerViewportManipulatorControllerInstance::~HammerViewportManipulatorControllerInstance()
     {
+        AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler::BusDisconnect();
         AzToolsFramework::ViewportInteraction::EditorEntityViewportInteractionRequestBus::Handler::BusDisconnect();
     }
 
     void HammerViewportManipulatorControllerInstance::FindVisibleEntities(AZStd::vector<AZ::EntityId>& visibleEntities)
     {
         visibleEntities.assign(m_entityVisibilityQuery.Begin(), m_entityVisibilityQuery.End());
+    }
+
+    // Registry keys/defaults below match Code/Editor/EditorViewportSettings.cpp exactly (Editor-private,
+    // so Hammer can't call its SandboxEditor:: free functions directly, but reads the same Settings
+    // Registry keys with the same defaults instead) - see the class comment on these overrides for why.
+    bool HammerViewportManipulatorControllerInstance::GridSnappingEnabled() const
+    {
+        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/GridSnapping", false);
+    }
+
+    float HammerViewportManipulatorControllerInstance::GridSize() const
+    {
+        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/GridSize", 0.1));
+    }
+
+    bool HammerViewportManipulatorControllerInstance::ShowGrid() const
+    {
+        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/ShowGrid", false);
+    }
+
+    bool HammerViewportManipulatorControllerInstance::AngleSnappingEnabled() const
+    {
+        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/AngleSnapping", false);
+    }
+
+    float HammerViewportManipulatorControllerInstance::AngleStep() const
+    {
+        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/AngleSize", 5.0));
+    }
+
+    float HammerViewportManipulatorControllerInstance::ManipulatorLineBoundWidth() const
+    {
+        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Manipulator/LineBoundWidth", 0.1));
+    }
+
+    float HammerViewportManipulatorControllerInstance::ManipulatorCircleBoundWidth() const
+    {
+        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Manipulator/CircleBoundWidth", 0.1));
+    }
+
+    bool HammerViewportManipulatorControllerInstance::StickySelectEnabled() const
+    {
+        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/StickySelect", false);
+    }
+
+    AZ::Vector3 HammerViewportManipulatorControllerInstance::DefaultEditorCameraPosition() const
+    {
+        return AZ::Vector3(
+            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/x", 0.0)),
+            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/y", -10.0)),
+            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/z", 4.0)));
+    }
+
+    AZ::Vector2 HammerViewportManipulatorControllerInstance::DefaultEditorCameraOrientation() const
+    {
+        return AZ::Vector2(
+            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPitch", 0.0)),
+            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingYaw", 0.0)));
+    }
+
+    bool HammerViewportManipulatorControllerInstance::IconsVisible() const
+    {
+        // Restricted to just the active viewport, matching how gizmos and the ViewportUi overlay
+        // already behave. Deliberately NOT ANDed with AzToolsFramework::IconsVisible() (the global
+        // user preference) - HammerEditorSystemComponent forces that global setting to false (see
+        // its comment for why: it's the only lever that suppresses the real, permanently-hidden
+        // viewport's own unconditional per-frame icon submission, which - due to a confirmed engine
+        // bug where AZ::RPI::DynamicDrawContext's RenderPipeline output scope is actually
+        // implemented as Scene output scope - was rendering into every Hammer viewport regardless of
+        // this restriction). Reading it here too would mean Hammer's own active viewport never shows
+        // icons either. The tradeoff: toggling the Editor's own "show icons" preference no longer
+        // has any effect on Hammer's viewports specifically.
+        return GetViewportId() == GetActiveHammerViewportId();
+    }
+
+    bool HammerViewportManipulatorControllerInstance::HelpersVisible() const
+    {
+        return AzToolsFramework::HelpersVisible();
+    }
+
+    bool HammerViewportManipulatorControllerInstance::OnlyShowHelpersForSelectedEntities() const
+    {
+        return AzToolsFramework::OnlyShowHelpersForSelectedEntities();
     }
 
     bool HammerViewportManipulatorControllerInstance::HandleInputChannelEvent(const AzFramework::ViewportControllerInputEvent& event)

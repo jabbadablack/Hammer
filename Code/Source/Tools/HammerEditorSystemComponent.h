@@ -58,5 +58,10 @@ namespace Hammer
         QPointer<HammerViewportLayoutWidget> m_viewportLayoutWidget;
         QPointer<QDockWidget> m_paneDockWidget;
         class ViewportSizeFilter* m_viewportFilter = nullptr;
+
+        // The global "show icons" preference as it was before EmbedViewportInCenter() forced it
+        // off - see the comment where it's captured for why, and Deactivate() for where it's
+        // restored.
+        bool m_originalIconsVisiblePreference = true;
     };
 } // namespace Hammer

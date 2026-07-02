@@ -19,9 +19,19 @@ namespace Hammer
     using HammerViewportManipulatorController = AzFramework::MultiViewportController<
         HammerViewportManipulatorControllerInstance, AzFramework::ViewportControllerPriority::DispatchToAllPriorities>;
 
+    // Tracks whichever Hammer viewport is currently "active" (see HammerWidget::SetActive) - set by
+    // HammerWidget::ApplyActiveState() whenever a viewport becomes active, read by
+    // HammerViewportManipulatorControllerInstance::IconsVisible() so entity icons only render in the
+    // active viewport. A free function rather than a per-instance flag since exactly one Hammer
+    // viewport is ever active at a time by construction (see HammerWidget's class comment) - no
+    // instance needs to know about any other instance's state, just this single shared value.
+    void SetActiveHammerViewportId(AzFramework::ViewportId viewportId);
+    AzFramework::ViewportId GetActiveHammerViewportId();
+
     class HammerViewportManipulatorControllerInstance final
         : public AzFramework::MultiViewportControllerInstanceInterface<HammerViewportManipulatorController>
         , public AzToolsFramework::ViewportInteraction::EditorEntityViewportInteractionRequestBus::Handler
+        , public AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler
     {
     public:
         HammerViewportManipulatorControllerInstance(AzFramework::ViewportId viewport, HammerViewportManipulatorController* controller);
@@ -36,6 +46,41 @@ namespace Hammer
         // visible in this viewport - see the comment on RefreshEntityVisibilityCache() for why this
         // is required (this bus has no handler at all otherwise, for any Hammer viewport).
         void FindVisibleEntities(AZStd::vector<AZ::EntityId>& visibleEntities) override;
+
+        // AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler
+        // Nothing else ever answers this bus for any Hammer viewport ID (only the real Editor
+        // viewport's own EditorViewportSettings does, for its own ID - confirmed by reading
+        // Code/Editor/EditorViewportWidget.cpp/.h) - so without a handler here, every one of these
+        // queries silently returns its EventResult-default (false/0) for every Hammer viewport,
+        // rather than erroring. That's what let entity icons render in every Hammer viewport
+        // instead of just the active one: EditorHelpers::DisplayHelpers() (Code/Framework/
+        // AzToolsFramework/AzToolsFramework/ViewportSelection/EditorHelpers.cpp) draws icons
+        // per-viewport based on IconsVisible(viewportId's) EventResult, and true is not the
+        // no-handler default. It also meant grid/angle snapping, sticky select, and manipulator
+        // bound widths were silently returning false/0 for every Hammer viewport, whether or not
+        // that was ever noticed - implementing this properly fixes that too. Every method here
+        // except IconsVisible() (the one genuinely restricted to the active viewport) mirrors
+        // EditorViewportSettings's own implementation exactly: EditorViewportWidget.cpp:2048-2111
+        // confirms all twelve methods are simple passthroughs to global user preferences, not
+        // anything genuinely viewport-specific - three via public AzToolsFramework:: free functions
+        // (ViewportSettings.h), the rest via SandboxEditor:: free functions that are themselves
+        // just AzToolsFramework::GetRegistry() reads under "/Amazon/Preferences/Editor/..." keys
+        // (confirmed via Code/Editor/EditorViewportSettings.cpp) - Hammer can't call the
+        // Editor-private SandboxEditor:: functions directly, but can and does read the exact same
+        // Settings Registry keys with the exact same defaults.
+        bool GridSnappingEnabled() const override;
+        float GridSize() const override;
+        bool ShowGrid() const override;
+        bool AngleSnappingEnabled() const override;
+        float AngleStep() const override;
+        float ManipulatorLineBoundWidth() const override;
+        float ManipulatorCircleBoundWidth() const override;
+        bool StickySelectEnabled() const override;
+        AZ::Vector3 DefaultEditorCameraPosition() const override;
+        AZ::Vector2 DefaultEditorCameraOrientation() const override;
+        bool IconsVisible() const override;
+        bool HelpersVisible() const override;
+        bool OnlyShowHelpersForSelectedEntities() const override;
 
     private:
         bool IsDoubleClick(AzToolsFramework::ViewportInteraction::MouseButton) const;

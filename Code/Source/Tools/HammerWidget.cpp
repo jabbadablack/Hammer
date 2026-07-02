@@ -3,6 +3,8 @@
 #include "HammerViewportManipulatorController.h"
 #include <QEvent>
 #include <QVBoxLayout>
+#include <Atom/RPI.Public/Pass/Pass.h>
+#include <Atom/RPI.Public/RenderPipeline.h>
 #include <Atom/RPI.Public/ViewportContext.h>
 #include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
@@ -83,6 +85,47 @@ namespace Hammer
     void HammerWidget::ApplyActiveState()
     {
         m_viewportWidget->SetInputProcessingEnabled(m_active);
+
+        // Lets HammerViewportManipulatorControllerInstance::IconsVisible() (Code/Source/Tools/
+        // HammerViewportManipulatorController.cpp) restrict entity icon rendering to just the
+        // active viewport - see the comment there for why that's needed. No corresponding "clear on
+        // deactivate" call: exactly one Hammer viewport is always active (this function only ever
+        // runs with m_active == true for whichever slot HammerViewportLayoutWidget just activated,
+        // immediately after deactivating every sibling), so the next activation's call here is
+        // always what keeps this correct.
+        if (m_active)
+        {
+            SetActiveHammerViewportId(m_viewportWidget->GetId());
+        }
+
+        // Entity icons are only ever *submitted* for the active Hammer viewport (see
+        // HammerViewportManipulatorControllerInstance::IconsVisible()), but a confirmed engine bug
+        // means that one submission still renders into every Hammer viewport's pipeline: the icon
+        // shader (Gems/AtomLyIntegration/AtomViewportDisplayIcons/Assets/Shaders/TexturedIcon.shader)
+        // uses the "2dpass" DrawListTag, and AZ::RPI::DynamicDrawContext's RenderPipeline output
+        // scope is actually implemented as Scene output scope (Gems/Atom/RPI/Code/Source/RPI.Public/
+        // DynamicDraw/DynamicDrawContext.cpp), so anything submitted to that draw list gets executed
+        // by every pipeline sharing this Gem's AZ::RPI::Scene, not just the one that submitted it.
+        // The pass that actually consumes "2dpass" is a specific, uniquely-named "2DPass"
+        // (Gems/Atom/Feature/Common/Assets/Passes/UIParent.pass) - each Hammer viewport's pipeline
+        // has its own separate instance of it (built from the same default pipeline template), so
+        // disabling it here for inactive viewports stops them from drawing whatever leaked into that
+        // shared list at all, without affecting the active viewport's own instance or anything else
+        // in the pass tree.
+        if (AZ::RPI::ViewportContextPtr viewportContext = m_viewportWidget->GetViewportContext())
+        {
+            if (AZ::RPI::RenderPipelinePtr pipeline = viewportContext->GetCurrentPipeline())
+            {
+                AZ::RPI::Ptr<AZ::RPI::Pass> twoDPass = pipeline->FindFirstPass(AZ::Name("2DPass"));
+                AZ_Error(
+                    "HammerWidget", twoDPass,
+                    "Could not find this viewport's own \"2DPass\" - entity icons may keep rendering in inactive viewports");
+                if (twoDPass)
+                {
+                    twoDPass->SetEnabled(m_active);
+                }
+            }
+        }
 
         // AtomViewportDisplayInfoSystemComponent (the FPS/resolution/render-pipeline debug text
         // overlay, Gems/AtomLyIntegration/AtomViewportDisplayInfo) - and potentially other
