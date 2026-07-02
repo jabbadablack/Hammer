@@ -3,6 +3,8 @@
 #include "HammerViewportManipulatorController.h"
 #include <QEvent>
 #include <QVBoxLayout>
+#include <Atom/RPI.Public/ViewportContext.h>
+#include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 #include <AzFramework/Scene/Scene.h>
 #include <AzFramework/Scene/SceneSystemInterface.h>
@@ -74,7 +76,42 @@ namespace Hammer
         m_active = active;
         if (m_sceneInitialized && m_viewportWidget)
         {
-            m_viewportWidget->SetInputProcessingEnabled(active);
+            ApplyActiveState();
+        }
+    }
+
+    void HammerWidget::ApplyActiveState()
+    {
+        m_viewportWidget->SetInputProcessingEnabled(m_active);
+
+        // AtomViewportDisplayInfoSystemComponent (the FPS/resolution/render-pipeline debug text
+        // overlay, Gems/AtomLyIntegration/AtomViewportDisplayInfo) - and potentially other
+        // Atom/Editor systems - unconditionally read AZ::RPI::ViewportContextRequestsInterface::
+        // GetDefaultViewportContext() rather than whichever viewport they're actually drawing into.
+        // HammerViewportLayoutWidget::SetHiddenRealViewport() already frees the "default"
+        // ViewportContext name/designation from the real (permanently hidden, no-longer-resized)
+        // Editor viewport once, at startup, so it's available to claim here. Claiming it for
+        // whichever Hammer viewport is actually active - and releasing it again on deactivation, so
+        // the next-activated viewport can claim it in turn - keeps that reference pointed at
+        // something live and correctly sized. AZ::RPI::ViewportContextManager::RenameViewportContext()
+        // asserts and silently no-ops if the target name is already claimed by another context, so
+        // both branches below check the current name first to avoid redundant/erroneous calls.
+        if (auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get())
+        {
+            AZ::RPI::ViewportContextPtr viewportContext = m_viewportWidget->GetViewportContext();
+            const AZ::Name defaultName = viewportContextManager->GetDefaultViewportContextName();
+            if (m_active)
+            {
+                if (viewportContext->GetName() != defaultName)
+                {
+                    viewportContextManager->RenameViewportContext(viewportContext, defaultName);
+                }
+            }
+            else if (viewportContext->GetName() == defaultName)
+            {
+                viewportContextManager->RenameViewportContext(
+                    viewportContext, AZ::Name(AZStd::string::format("Hammer Viewport %u", static_cast<unsigned>(m_viewportWidget->GetId()))));
+            }
         }
     }
 
@@ -108,6 +145,6 @@ namespace Hammer
         // Applies whatever active state was requested via SetActive() before the controller list
         // existed (e.g. HammerViewportLayoutWidget seeding the initially-active slot at
         // construction time, before any HammerWidget has necessarily finished initializing).
-        m_viewportWidget->SetInputProcessingEnabled(m_active);
+        ApplyActiveState();
     }
 }

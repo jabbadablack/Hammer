@@ -2,6 +2,8 @@
 #include "HammerWidget.h"
 
 #include <AzCore/std/algorithm.h>
+#include <Atom/RPI.Public/ViewportContext.h>
+#include <Atom/RPI.Public/ViewportContextBus.h>
 
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -123,5 +125,26 @@ namespace Hammer
         realViewport->setParent(m_gridContainer);
         realViewport->hide();
         m_hiddenRealViewport = realViewport;
+
+        // The real viewport's AZ::RPI::ViewportContext was created first (at Editor startup, long
+        // before any Hammer viewport exists), so it still holds the reserved "default" context
+        // name/designation. AZ::RPI::ViewportContextManager::RenameViewportContext() refuses to
+        // reassign a name that's already claimed (asserts and silently no-ops) - so as long as the
+        // real viewport keeps squatting that name, HammerWidget::ApplyActiveState()'s attempt to
+        // claim it for the active Hammer viewport can never succeed, and anything reading
+        // GetDefaultViewportContext() (e.g. the FPS/resolution debug text overlay) keeps reading
+        // this now-hidden, no-longer-resized viewport's stale size. Freeing the name here, once,
+        // lets the active-viewport claim in HammerWidget actually take effect.
+        if (auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get())
+        {
+            AZ::RPI::ViewportContextPtr defaultContext = viewportContextManager->GetDefaultViewportContext();
+            AZ_Error(
+                "HammerViewportLayoutWidget", defaultContext,
+                "Could not find the current default ViewportContext to free its name from the real viewport");
+            if (defaultContext)
+            {
+                viewportContextManager->RenameViewportContext(defaultContext, AZ::Name("Hammer Hidden Perspective Viewport"));
+            }
+        }
     }
 } // namespace Hammer

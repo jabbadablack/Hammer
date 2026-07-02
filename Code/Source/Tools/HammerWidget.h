@@ -69,6 +69,11 @@ namespace Hammer
         // (LightCullingPass/ReflectionScreenSpaceTracePass building a zero-sized buffer).
         void InitializeSceneIfReady();
 
+        // Applies m_active to the (by-now-initialized) viewport: input-processing enablement, and
+        // - only while active - claiming the "default" AZ::RPI::ViewportContext designation. See
+        // the definition for why the latter is needed.
+        void ApplyActiveState();
+
         AtomToolsFramework::RenderViewportWidget* m_viewportWidget = nullptr;
         bool m_sceneInitialized = false;
         bool m_active = false;
