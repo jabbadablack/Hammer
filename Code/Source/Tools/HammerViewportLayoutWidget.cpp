@@ -38,13 +38,13 @@ namespace Hammer
         m_gridContainer = new QWidget(this);
         m_gridLayout = new QGridLayout(m_gridContainer);
         m_gridLayout->setContentsMargins(0, 0, 0, 0);
-        m_gridLayout->setSpacing(0);
+        m_gridLayout->setSpacing(3);
         outerLayout->addWidget(m_gridContainer, /*stretch*/ 1);
 
         m_hiddenViewportProxy = new HammerHiddenViewportProxy(m_gridContainer, this);
         AZ_Assert(m_hiddenViewportProxy, "Failed to allocate HammerHiddenViewportProxy");
 
-        SetViewportCount(4);
+        SetViewportCount(1);
     }
 
     void HammerViewportLayoutWidget::SetViewportCount(int count)
