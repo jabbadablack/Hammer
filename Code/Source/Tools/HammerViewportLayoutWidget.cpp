@@ -1,7 +1,6 @@
 #include "HammerViewportLayoutWidget.h"
 #include "HammerWidget.h"
 
-#include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 #include <AzCore/std/algorithm.h>
 
 #include <QGridLayout>
@@ -54,14 +53,13 @@ namespace Hammer
         // ReflectionScreenSpaceTracePass hitting a zero-sized buffer during that rebuild).
         if (m_viewports.empty())
         {
-            AtomToolsFramework::RenderViewportWidget* primaryViewport = nullptr;
             for (int i = 0; i < MaxViewportCount; ++i)
             {
-                HammerWidget* viewport = new HammerWidget(/*wireframe*/ true, primaryViewport, m_gridContainer);
-                if (i == 0)
-                {
-                    primaryViewport = viewport->GetViewportWidget();
-                }
+                // Slot 0 (constructed first, guaranteeing it becomes the default AZ::RPI::
+                // ViewportContext before any others exist) gets its own camera controller; every
+                // other slot mirrors it.
+                HammerWidget* viewport = new HammerWidget(/*isPrimary*/ i == 0, m_gridContainer);
+                AZ_Assert(viewport, "Failed to allocate HammerWidget #%d", i);
                 m_viewports.push_back(viewport);
             }
         }
@@ -74,7 +72,8 @@ namespace Hammer
 
         // 1 viewport -> single cell; 2 -> side by side; 3/4 -> 2x2 grid (3 leaves the last cell empty).
         const int columns = count <= 1 ? 1 : 2;
-        for (int i = 0; i < count; ++i)
+        const int shownCount = AZStd::GetMin(count, static_cast<int>(m_viewports.size()));
+        for (int i = 0; i < shownCount; ++i)
         {
             m_gridLayout->addWidget(m_viewports[i], i / columns, i % columns);
             m_viewports[i]->show();

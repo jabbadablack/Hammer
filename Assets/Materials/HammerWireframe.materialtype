@@ -1,9 +1,0 @@
-{
-    "description": "Minimal unlit wireframe material used by the Hammer wireframe preview viewport.",
-    "version": 1,
-    "shaders": [
-        {
-            "file": "../Shaders/HammerWireframe.shader"
-        }
-    ]
-}

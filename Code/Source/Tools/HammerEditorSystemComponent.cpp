@@ -2,7 +2,6 @@
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzCore/std/string/string_view.h>
 
-#include <Atom/RPI.Public/FeatureProcessorFactory.h>
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
 #include <AzToolsFramework/API/ViewPaneOptions.h>
 
@@ -13,7 +12,6 @@
 
 #include "HammerEditorSystemComponent.h"
 #include "HammerViewportLayoutWidget.h"
-#include "HammerWireframeFeatureProcessor.h"
 
 #include <Hammer/HammerTypeIds.h>
 
@@ -29,8 +27,6 @@ namespace Hammer
 
     void HammerEditorSystemComponent::Reflect(AZ::ReflectContext* context)
     {
-        HammerWireframeFeatureProcessor::Reflect(context);
-
         if (auto serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
         {
             serializeContext->Class<HammerEditorSystemComponent, HammerSystemComponent>()
@@ -69,12 +65,24 @@ namespace Hammer
         HammerSystemComponent::Activate();
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
 
-        AZ::RPI::FeatureProcessorFactory::Get()->RegisterFeatureProcessor<HammerWireframeFeatureProcessor>();
-
         // Clears a stale "Layout" value an earlier version of this Gem left in the Windows
-        // registry, which otherwise leaves CLayoutWnd in a broken state at startup.
-        QSettings settings;
+        // registry, which otherwise leaves CLayoutWnd in a broken state at startup. Must use the
+        // same explicit ("O3DE", "O3DE") scope MainWindow::m_settings uses (Code/Editor/
+        // MainWindow.cpp:291) - a bare QSettings() reads QCoreApplication's organization/app name
+        // instead, which is a different registry location and silently no-ops here.
+        QSettings settings("O3DE", "O3DE");
         settings.remove("ViewportLayout");
+
+        // QtViewPaneManager persists its dock layout (including which "Perspective" instances
+        // were open) under Editor/fancyWindowLayouts/last (Code/Editor/QtViewPaneManager.cpp:
+        // GetFancyViewPaneStateGroupName/SaveStateToLayout) and restores it during Editor startup,
+        // before Hammer's own code runs. A session where multiple extra "Perspective" instances
+        // were left open (as HammerViewportLayoutWidget used to leave them, hidden but not
+        // destroyed) got persisted there, and restoring it on the next launch crashed inside
+        // EditorViewportWidget::CheckRespondToInput. HammerViewportLayoutWidget now properly
+        // deletes its extra "Perspective" instances instead of just hiding them, so this shouldn't
+        // recur, but this clears out any already-corrupted state from before that fix.
+        settings.remove("Editor/fancyWindowLayouts/last");
     }
 
     void HammerEditorSystemComponent::Deactivate()
@@ -96,9 +104,6 @@ namespace Hammer
         AzToolsFramework::UnregisterViewPane(ViewportPaneName);
         m_paneDockWidget = nullptr;
         m_viewportLayoutWidget = nullptr;
-        HammerWireframeFeatureProcessor::ClearWireframeWindows();
-
-        AZ::RPI::FeatureProcessorFactory::Get()->UnregisterFeatureProcessor<HammerWireframeFeatureProcessor>();
 
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
         HammerSystemComponent::Deactivate();
@@ -131,17 +136,16 @@ namespace Hammer
             [this](QWidget* parent) -> QWidget*
             {
                 m_viewportLayoutWidget = new HammerViewportLayoutWidget(parent);
+                AZ_Assert(m_viewportLayoutWidget, "Failed to allocate HammerViewportLayoutWidget");
                 return m_viewportLayoutWidget;
             });
     }
 
     void HammerEditorSystemComponent::EmbedViewportInCenter()
     {
-        AZ_Warning("HammerEditorSystemComponent", false, "EmbedViewportInCenter: starting");
-
         QWidget* mainWindowWidget = nullptr;
         AzToolsFramework::EditorRequestBus::BroadcastResult(mainWindowWidget, &AzToolsFramework::EditorRequests::GetMainWindow);
-        AZ_Warning("HammerEditorSystemComponent", mainWindowWidget, "Could not get the Editor main window");
+        AZ_Error("HammerEditorSystemComponent", mainWindowWidget, "Could not get the Editor main window");
         if (!mainWindowWidget)
         {
             return;
@@ -160,12 +164,11 @@ namespace Hammer
                 break;
             }
         }
-        AZ_Warning("HammerEditorSystemComponent", oldViewport, "Could not find the main EditorViewportWidget");
+        AZ_Error("HammerEditorSystemComponent", oldViewport, "Could not find the main EditorViewportWidget");
         if (!oldViewport)
         {
             return;
         }
-        AZ_Warning("HammerEditorSystemComponent", false, "EmbedViewportInCenter: found EditorViewportWidget");
 
         // Walk up to the QMainWindow whose central widget hosts the viewport (Code/Editor/MainWindow.cpp: m_viewPaneHost).
         // This is the same QMainWindow that QtViewPaneManager docks every other pane into.
@@ -178,26 +181,28 @@ namespace Hammer
                 break;
             }
         }
-        AZ_Warning("HammerEditorSystemComponent", viewPaneHost, "Could not find the QMainWindow hosting the main viewport");
+        AZ_Error("HammerEditorSystemComponent", viewPaneHost, "Could not find the QMainWindow hosting the main viewport");
         if (!viewPaneHost)
         {
             return;
         }
-        AZ_Warning("HammerEditorSystemComponent", false, "EmbedViewportInCenter: found viewPaneHost");
 
         m_paneDockWidget = AzToolsFramework::InstanceViewPane(ViewportPaneName);
-        AZ_Warning("HammerEditorSystemComponent", m_paneDockWidget, "Could not instance the '%s' view pane", ViewportPaneName);
+        AZ_Error("HammerEditorSystemComponent", m_paneDockWidget, "Could not instance the '%s' view pane", ViewportPaneName);
         if (!m_paneDockWidget)
         {
             return;
         }
 
         QWidget* content = m_paneDockWidget->widget();
-        AZ_Warning("HammerEditorSystemComponent", content, "Instanced '%s' view pane has no content widget", ViewportPaneName);
+        AZ_Error("HammerEditorSystemComponent", content, "Instanced '%s' view pane has no content widget", ViewportPaneName);
         if (!content)
         {
             return;
         }
+        AZ_Assert(
+            content == m_viewportLayoutWidget, "Instanced '%s' view pane's content is not the HammerViewportLayoutWidget it was given",
+            ViewportPaneName);
 
         // The QDockWidget itself can never be shown as - or inside - the central widget: it was
         // briefly tried directly (viewPaneHost->setCentralWidget(m_paneDockWidget)) and crashed as

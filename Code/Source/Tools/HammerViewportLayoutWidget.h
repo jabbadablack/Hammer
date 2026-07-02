@@ -14,10 +14,11 @@ namespace Hammer
 {
     class HammerWidget;
 
-    // Hosts 1-4 HammerWidget viewports arranged in a grid, with a small toolbar to switch the
-    // count. The first viewport has its own camera controller, matching the default Editor
-    // viewport; any additional viewports have no camera input of their own and instead mirror
-    // the first viewport's camera every time it changes (see HammerWidget's cameraSource param).
+    // Hosts 1-4 Hammer-owned viewports arranged in a grid, with a small toolbar to switch the
+    // count. All viewports are HammerWidget instances: slot 0 has its own camera controller
+    // (matching the default Editor viewport's feel), and any additional slots (1-3) mirror slot
+    // 0's camera instead of navigating independently. Selection and gizmos on every slot come from
+    // HammerViewportManipulatorController, which uses only public AzToolsFramework APIs.
     class HammerViewportLayoutWidget
         : public QWidget
     {
