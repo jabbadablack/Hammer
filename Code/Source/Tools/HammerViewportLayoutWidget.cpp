@@ -79,6 +79,26 @@ namespace Hammer
                 AZ_Assert(viewport, "Failed to allocate HammerWidget #%d", i);
                 m_viewports.push_back(viewport);
             }
+
+            // Only one viewport is ever "active" (input-processing enabled) at a time - see the
+            // class comment on HammerWidget for why. Whichever viewport's RenderViewportWidget
+            // gains Qt focus (e.g. the user clicks into it) becomes the new active one; every
+            // sibling is deactivated in response.
+            for (HammerWidget* viewport : m_viewports)
+            {
+                connect(
+                    viewport, &HammerWidget::ViewportFocusRequested, this,
+                    [this, viewport]
+                    {
+                        for (HammerWidget* sibling : m_viewports)
+                        {
+                            sibling->SetActive(sibling == viewport);
+                        }
+                    });
+            }
+
+            // Seeds the initially-active viewport; every other slot already defaults to inactive.
+            m_viewports[0]->SetActive(true);
         }
 
         for (HammerWidget* viewport : m_viewports)

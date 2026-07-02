@@ -1,6 +1,7 @@
 #include "HammerWidget.h"
 #include "HammerViewportCameraFactory.h"
 #include "HammerViewportManipulatorController.h"
+#include <QEvent>
 #include <QVBoxLayout>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 #include <AzFramework/Scene/Scene.h>
@@ -41,6 +42,7 @@ namespace Hammer
         HammerRenderViewportWidget* viewport1 = new HammerRenderViewportWidget(this, false);
         AZ_Assert(viewport1, "Failed to allocate HammerRenderViewportWidget");
         m_viewportWidget = viewport1;
+        m_viewportWidget->installEventFilter(this);
 
         mainLayout->addWidget(viewport1);
         setLayout(mainLayout);
@@ -56,6 +58,24 @@ namespace Hammer
     {
         QWidget::showEvent(event);
         InitializeSceneIfReady();
+    }
+
+    bool HammerWidget::eventFilter(QObject* watched, QEvent* event)
+    {
+        if (watched == m_viewportWidget && event->type() == QEvent::FocusIn)
+        {
+            emit ViewportFocusRequested();
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
+    void HammerWidget::SetActive(bool active)
+    {
+        m_active = active;
+        if (m_sceneInitialized && m_viewportWidget)
+        {
+            m_viewportWidget->SetInputProcessingEnabled(active);
+        }
     }
 
     void HammerWidget::InitializeSceneIfReady()
@@ -84,5 +104,10 @@ namespace Hammer
         // viewport's feel.
         m_viewportWidget->GetControllerList()->Add(CreateViewportCameraController(m_viewportWidget->GetId()));
         m_viewportWidget->GetControllerList()->Add(AZStd::make_shared<HammerViewportManipulatorController>());
+
+        // Applies whatever active state was requested via SetActive() before the controller list
+        // existed (e.g. HammerViewportLayoutWidget seeding the initially-active slot at
+        // construction time, before any HammerWidget has necessarily finished initializing).
+        m_viewportWidget->SetInputProcessingEnabled(m_active);
     }
 }

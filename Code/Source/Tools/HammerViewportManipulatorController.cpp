@@ -130,6 +130,23 @@ namespace Hammer
             }
         }
 
+        if (eventType == MouseEvent::Down || eventType == MouseEvent::DoubleClick)
+        {
+            // Closes a race that broke click-to-select: AzToolsFramework::EditorVisibleEntityDataCache
+            // (Code/Framework/AzToolsFramework/AzToolsFramework/ViewportSelection/
+            // EditorVisibleEntityDataCache.cpp) is a single cache shared across every viewport of
+            // this entity context, not keyed by viewport, and gets rebuilt in place by whichever
+            // viewport's UpdateViewport() tick happens to run last - not necessarily the one being
+            // clicked in. So by the time a click here reaches the interaction bus, the cache could
+            // hold a different viewport's entities, the hit-test finds nothing, and the click is
+            // treated as an empty-space click (deselecting). Forcing a fresh rebuild scoped to this
+            // viewport immediately before forwarding the click closes that window. Confirmed via
+            // direct engine source reading; the cache itself isn't fixable from here (unkeyed by
+            // design, off-limits engine code) - this only fixes click-to-select specifically, not
+            // the separate entity-icon-billboard rendering issue in a different system.
+            RefreshEntityVisibilityCache();
+        }
+
         if (eventType)
         {
             MouseInteraction mouseInteraction = m_mouseInteraction;
@@ -183,7 +200,11 @@ namespace Hammer
     void HammerViewportManipulatorControllerInstance::UpdateViewport(const AzFramework::ViewportControllerUpdateEvent& event)
     {
         m_currentTime = event.m_time;
+        RefreshEntityVisibilityCache();
+    }
 
+    void HammerViewportManipulatorControllerInstance::RefreshEntityVisibilityCache() const
+    {
         // EditorInteractionSystemComponent::DisplayViewport (Code/Framework/AzToolsFramework/.../
         // EditorInteractionSystemComponent.cpp) is the single, fully public handler that both
         // populates the visible-entity pick cache used for selection and draws the shared

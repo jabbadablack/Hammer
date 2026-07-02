@@ -31,6 +31,12 @@ namespace Hammer
     private:
         bool IsDoubleClick(AzToolsFramework::ViewportInteraction::MouseButton) const;
 
+        // Broadcasts DisplayViewport for this viewport, which (among other things) rebuilds
+        // AzToolsFramework's shared entity-visibility/pick cache. Called every tick from
+        // UpdateViewport(), and also synchronously right before forwarding a click to the
+        // interaction bus - see the comment on this function's definition for why.
+        void RefreshEntityVisibilityCache() const;
+
         struct ClickEvent
         {
             AZ::ScriptTimePoint m_time;
