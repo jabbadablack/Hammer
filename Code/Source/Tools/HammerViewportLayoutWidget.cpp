@@ -6,6 +6,7 @@
 #include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 
+#include <QEvent>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -139,10 +140,21 @@ namespace Hammer
         // EditorViewportWidget::Update() (Code/Editor/EditorViewportWidget.cpp:426-429)
         // unconditionally early-returns on !isVisible(), and that's what drives its ViewportUi
         // overlay (the transform-mode/reference-space/component-mode widgets this whole thing is
-        // for). SyncRealViewportToActive() (driven by m_realViewportSyncTimer, started in the
-        // constructor) continuously repositions and camera-syncs this widget to the active Hammer
-        // viewport, so the user perceives it as part of that viewport rather than a second,
-        // independent one - see that function for the full rationale.
+        // for).
+        //
+        // NOT positioned over the active Hammer viewport, though - an earlier attempt did that
+        // (plus WA_TransparentForMouseEvents/NoFocus to try to stop it stealing input) and camera
+        // navigation still intermittently broke: a real, fully-interactive native-surface widget
+        // sitting in the same screen space as the Hammer viewport underneath it was disruptive
+        // regardless (this codebase has repeatedly seen native/GPU-surface widgets not fully
+        // respect normal Qt input-routing attributes). SyncRealViewportToActive() instead keeps
+        // this positioned off-screen entirely - genuinely visible, so Update() keeps running, but
+        // nowhere the user can ever see or interact with it directly - and separately forces just
+        // its ViewportUi overlay window (a different, independently-positioned widget) back onto
+        // the active Hammer viewport via eventFilter(). Kept mouse/keyboard-transparent regardless,
+        // as a cheap defensive margin in case it's ever transiently repositioned on-screen.
+        realViewport->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        realViewport->setFocusPolicy(Qt::NoFocus);
         realViewport->show();
         m_hiddenRealViewport = realViewport;
 
@@ -166,21 +178,20 @@ namespace Hammer
             m_hiddenRealViewport->parentWidget() == m_gridContainer,
             "m_hiddenRealViewport is expected to remain parented to m_gridContainer - geometry below is computed relative to it");
 
-        // Keeps the real viewport positioned/sized exactly over the active Hammer viewport, so its
-        // ViewportUi overlay (which derives its own position/size from this widget's geometry via
-        // a private code path we can't call into directly) ends up in the right place. Coordinates
-        // must be converted since m_hiddenRealViewport's Qt parent is m_gridContainer, not the
-        // desktop.
-        const QPoint activeGlobalTopLeft = m_activeViewport->mapToGlobal(QPoint(0, 0));
-        const QPoint relativeTopLeft = m_gridContainer->mapFromGlobal(activeGlobalTopLeft);
+        // Positioned far outside any conceivable monitor arrangement - genuinely visible (see
+        // SetHiddenRealViewport()) but nowhere the user can see or click into it. Still sized to
+        // match the active Hammer viewport, since its ViewportUi overlay derives its own size (used
+        // for aligning clusters to the overlay's edges) from this widget's size, via a private code
+        // path we can't call into directly - only the overlay's on-screen position gets forced
+        // elsewhere, in eventFilter() below.
+        static constexpr int OffScreenCoordinate = -10000;
         m_hiddenRealViewport->setGeometry(
-            relativeTopLeft.x(), relativeTopLeft.y(), m_activeViewport->width(), m_activeViewport->height());
+            OffScreenCoordinate, OffScreenCoordinate, m_activeViewport->width(), m_activeViewport->height());
 
-        // Keeps the real viewport's own camera matching the active Hammer viewport's, so even
-        // though it's genuinely visible (see SetHiddenRealViewport()) and positioned directly over
-        // the active viewport, its own render shows the identical scene from the identical angle -
-        // nothing for the user to perceive as a second, competing viewport, regardless of how the
-        // two native render surfaces end up Z-ordered relative to each other.
+        // Keeps the real viewport's own camera matching the active Hammer viewport's. Not required
+        // for the ViewportUi overlay itself, but kept as a defensive measure in case the real
+        // viewport's own render ever becomes visible (e.g. a transient off-screen-positioning
+        // glitch), so there's nothing for the user to perceive as a second, mismatched viewport.
         AtomToolsFramework::RenderViewportWidget* activeViewportWidget = m_activeViewport->GetViewportWidget();
         AZ_Assert(activeViewportWidget, "The active HammerWidget must have a valid RenderViewportWidget by now");
         if (m_hiddenRealViewportContext && activeViewportWidget)
@@ -191,5 +202,42 @@ namespace Hammer
                 m_hiddenRealViewportContext->SetCameraTransform(activeContext->GetCameraTransform());
             }
         }
+
+        // The overlay window is created lazily by ViewportUiDisplay (only once Update() has had a
+        // chance to run and something's actually been added to it), so it may not exist yet the
+        // first several times this runs. Found once and cached; installEventFilter() only needs to
+        // happen once too.
+        if (!m_viewportUiOverlayWindow)
+        {
+            m_viewportUiOverlayWindow = m_hiddenRealViewport->findChild<QWidget*>(QStringLiteral("ViewportUiWindow"));
+            if (m_viewportUiOverlayWindow)
+            {
+                m_viewportUiOverlayWindow->installEventFilter(this);
+            }
+        }
+    }
+
+    bool HammerViewportLayoutWidget::eventFilter(QObject* watched, QEvent* event)
+    {
+        // Every time ViewportUiDisplay::Update() runs (driven by the real viewport's own now-passing
+        // Update() gate - see SetHiddenRealViewport()), its private PositionUiOverlayOverRenderViewport()
+        // recomputes m_viewportUiOverlayWindow's geometry from the real viewport's own (off-screen -
+        // see SyncRealViewportToActive()) position. Intercepting the resulting Move/Resize and
+        // immediately correcting just the position (not the size, which is already right since the
+        // real viewport is kept sized to match) is the only way to get the overlay to track the
+        // active Hammer viewport instead, since there's no public API to redirect what geometry it
+        // computes from in the first place. Guarded against infinite recursion: move() below
+        // triggers another QEvent::Move, but by then pos() already matches desiredTopLeft, so the
+        // inner recursive call takes the early-return branch instead of calling move() again.
+        if (watched == m_viewportUiOverlayWindow && m_activeViewport &&
+            (event->type() == QEvent::Move || event->type() == QEvent::Resize))
+        {
+            const QPoint desiredTopLeft = m_activeViewport->mapToGlobal(QPoint(0, 0));
+            if (m_viewportUiOverlayWindow->pos() != desiredTopLeft)
+            {
+                m_viewportUiOverlayWindow->move(desiredTopLeft);
+            }
+        }
+        return QWidget::eventFilter(watched, event);
     }
 } // namespace Hammer
