@@ -4,6 +4,8 @@
 #include <AzFramework/Input/Events/InputChannelEventListener.h>
 #include <AzFramework/Viewport/MultiViewportController.h>
 #include <AzFramework/Viewport/ViewportId.h>
+#include <AzFramework/Visibility/EntityVisibilityQuery.h>
+#include <AzToolsFramework/Viewport/ViewportMessages.h>
 #include <AzToolsFramework/Viewport/ViewportTypes.h>
 
 namespace Hammer
@@ -19,14 +21,21 @@ namespace Hammer
 
     class HammerViewportManipulatorControllerInstance final
         : public AzFramework::MultiViewportControllerInstanceInterface<HammerViewportManipulatorController>
+        , public AzToolsFramework::ViewportInteraction::EditorEntityViewportInteractionRequestBus::Handler
     {
     public:
         HammerViewportManipulatorControllerInstance(AzFramework::ViewportId viewport, HammerViewportManipulatorController* controller);
-        ~HammerViewportManipulatorControllerInstance() = default;
+        ~HammerViewportManipulatorControllerInstance() override;
 
         bool HandleInputChannelEvent(const AzFramework::ViewportControllerInputEvent& event) override;
         void ResetInputChannels() override;
         void UpdateViewport(const AzFramework::ViewportControllerUpdateEvent& event) override;
+
+        // AzToolsFramework::ViewportInteraction::EditorEntityViewportInteractionRequestBus::Handler
+        // Answers AzToolsFramework::EditorVisibleEntityDataCache's query for which entities are
+        // visible in this viewport - see the comment on RefreshEntityVisibilityCache() for why this
+        // is required (this bus has no handler at all otherwise, for any Hammer viewport).
+        void FindVisibleEntities(AZStd::vector<AZ::EntityId>& visibleEntities) override;
 
     private:
         bool IsDoubleClick(AzToolsFramework::ViewportInteraction::MouseButton) const;
@@ -46,5 +55,15 @@ namespace Hammer
         AzToolsFramework::ViewportInteraction::MouseInteraction m_mouseInteraction;
         AZStd::unordered_map<AzToolsFramework::ViewportInteraction::MouseButton, ClickEvent> m_pendingDoubleClicks;
         AZ::ScriptTimePoint m_currentTime;
+
+        // Drives FindVisibleEntities() - refreshed every tick in UpdateViewport() from this
+        // viewport's own camera state. Mirrors exactly what Code/Editor/EditorViewportWidget.cpp's
+        // m_entityVisibilityQuery does (the same AzFramework::EntityVisibilityQuery class, fully
+        // public), which is the piece Hammer's viewports were missing entirely - without it,
+        // AzToolsFramework::EditorVisibleEntityDataCache's FindVisibleEntities broadcast had no
+        // handler for any Hammer viewport ID, so it silently returned zero entities always,
+        // regardless of camera position - not a race condition, and not caused by the camera
+        // controller.
+        AzFramework::EntityVisibilityQuery m_entityVisibilityQuery;
     };
 }
