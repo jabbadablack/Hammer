@@ -350,8 +350,12 @@ namespace Hammer
         // oldViewport (the real EditorViewportWidget) is a descendant of oldCentralWidget, which is
         // now an orphaned, hidden widget detached above - any Qt event-chain reaction it has to
         // losing a child fires while it's already inert, not while it was still the live central
-        // widget. Pulling oldViewport out here and handing it to Hammer's grid reuses the one
-        // EditorViewportWidget instance that's safe to touch this way: it was never routed through
+        // widget. Pulling oldViewport out here and keeping it alive-but-permanently-hidden (never
+        // shown in Hammer's grid, which always uses HammerWidget for every slot) is meant to
+        // satisfy Editor/AzToolsFramework systems - the single-address Camera::EditorCameraRequestBus/
+        // CameraNotificationBus handlers, and the static m_pPrimaryViewport - that are only ever
+        // implemented by a real EditorViewportWidget instance and apparently expect one to exist
+        // somewhere, even if never displayed. It was never routed through
         // AzToolsFramework::InstanceViewPane("Perspective"), which deterministically null-derefs in
         // EditorViewportWidget::CheckRespondToInput on m_renderViewport for any newly-constructed
         // instance (SetViewportId(), the only thing that constructs m_renderViewport, is never
@@ -362,10 +366,9 @@ namespace Hammer
         // step - going through nullptr briefly makes Qt treat the widget as a genuine top-level
         // window, which for a native-surface/GPU-rendered widget like this one can cause its
         // underlying native window handle to be recreated or repositioned/resized using default
-        // top-level placement. That was the cause of the viewport rendering at a stale, full-window
-        // size instead of respecting the grid cell QGridLayout assigns it.
+        // top-level placement.
         AZ_Assert(m_viewportLayoutWidget, "m_viewportLayoutWidget is null after being validated as 'content' above");
-        m_viewportLayoutWidget->SetPrimaryViewportOverride(oldViewport);
+        m_viewportLayoutWidget->SetHiddenRealViewport(oldViewport);
     }
 
 } // namespace Hammer

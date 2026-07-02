@@ -20,7 +20,9 @@ namespace Hammer
 
         QHBoxLayout* toolbarLayout = new QHBoxLayout();
         toolbarLayout->addWidget(new QLabel(tr("Viewports:"), this));
-        for (int count = MinViewportCount; count <= MaxViewportCount; ++count)
+        // 3 is deliberately omitted: a 2x2 grid with one empty cell looked bad, so the only
+        // selectable counts are 1 (solo), 2 (side by side), and 4 (full 2x2 grid).
+        for (int count : { 1, 2, 4 })
         {
             QPushButton* button = new QPushButton(QString::number(count), this);
             button->setCheckable(true);
@@ -41,35 +43,16 @@ namespace Hammer
         SetViewportCount(4);
     }
 
-    QWidget* HammerViewportLayoutWidget::SlotWidget(int index) const
-    {
-        // The real viewport override is only usable in solo (1-viewport) mode: reusing it inside a
-        // subdivided grid cell repeatedly failed to respect the grid's geometry (it kept rendering
-        // as if it still owned the whole container, regardless of the small cell QGridLayout
-        // assigned it - a native-rendering-surface quirk specific to the real Editor viewport that
-        // HammerWidget's own viewports don't share, and not something fixable without Editor-private
-        // code changes). Falling back to the normal HammerWidget for slot 0 whenever more than one
-        // viewport is shown avoids that entirely.
-        if (index == 0 && m_primaryViewportOverride && m_currentCount == 1)
-        {
-            return m_primaryViewportOverride;
-        }
-        return m_viewports[index];
-    }
-
     void HammerViewportLayoutWidget::SetViewportCount(int count)
     {
         count = AZStd::clamp(count, MinViewportCount, MaxViewportCount);
-        m_currentCount = count;
 
         // Viewports are created once (below) and never destroyed for the lifetime of this widget;
         // switching the count only shows/hides and repositions them. Destroying a HammerWidget
         // tears down its Atom render pipeline (via ~ViewportContext -> Scene::RemoveRenderPipeline),
         // which triggers the scene's whole pass tree to rebuild - and doing that while other
         // viewports/pipelines are still around crashed the Editor (LightCullingPass/
-        // ReflectionScreenSpaceTracePass hitting a zero-sized buffer during that rebuild). This
-        // also applies to a superseded slot-0 HammerWidget once SetPrimaryViewportOverride() has
-        // replaced it - it stays alive, just hidden, forever.
+        // ReflectionScreenSpaceTracePass hitting a zero-sized buffer during that rebuild).
         if (m_viewports.empty())
         {
             for (int i = 0; i < MaxViewportCount; ++i)
@@ -106,38 +89,39 @@ namespace Hammer
             m_gridLayout->removeWidget(viewport);
             viewport->hide();
         }
-        if (m_primaryViewportOverride)
-        {
-            m_gridLayout->removeWidget(m_primaryViewportOverride);
-            m_primaryViewportOverride->hide();
-        }
 
-        // 1 viewport -> single cell; 2 -> side by side; 3/4 -> 2x2 grid (3 leaves the last cell empty).
+        // 1 viewport -> single cell; 2 -> side by side; 4 -> full 2x2 grid.
         const int columns = count <= 1 ? 1 : 2;
         const int shownCount = AZStd::GetMin(count, static_cast<int>(m_viewports.size()));
         for (int i = 0; i < shownCount; ++i)
         {
-            QWidget* slotWidget = SlotWidget(i);
-            m_gridLayout->addWidget(slotWidget, i / columns, i % columns);
-            slotWidget->show();
+            m_gridLayout->addWidget(m_viewports[i], i / columns, i % columns);
+            m_viewports[i]->show();
         }
 
-        for (int i = 0; i < static_cast<int>(m_countButtons.size()); ++i)
+        // Matches the { 1, 2, 4 } counts the toolbar buttons were built from, in order.
+        int buttonIndex = 0;
+        for (int buttonCount : { 1, 2, 4 })
         {
-            m_countButtons[i]->setChecked(i + MinViewportCount == count);
+            m_countButtons[buttonIndex]->setChecked(buttonCount == count);
+            ++buttonIndex;
         }
     }
 
-    void HammerViewportLayoutWidget::SetPrimaryViewportOverride(QWidget* realViewport)
+    void HammerViewportLayoutWidget::SetHiddenRealViewport(QWidget* realViewport)
     {
-        AZ_Assert(realViewport, "SetPrimaryViewportOverride called with a null widget");
+        AZ_Assert(realViewport, "SetHiddenRealViewport called with a null widget");
         if (!realViewport)
         {
             return;
         }
 
+        // Parented here so it's kept alive for this widget's whole lifetime, but never added to
+        // m_gridLayout - it's not shown in any slot, ever. See the header comment on
+        // SetHiddenRealViewport() for why keeping the object alive (not necessarily visible)
+        // still matters.
         realViewport->setParent(m_gridContainer);
-        m_primaryViewportOverride = realViewport;
-        SetViewportCount(m_currentCount);
+        realViewport->hide();
+        m_hiddenRealViewport = realViewport;
     }
 } // namespace Hammer
