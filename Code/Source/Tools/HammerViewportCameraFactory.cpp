@@ -3,6 +3,7 @@
 #include <AtomToolsFramework/Viewport/ModularViewportCameraController.h>
 #include <AzFramework/Viewport/CameraInput.h>
 #include <AzToolsFramework/API/SettingsRegistryUtils.h>
+#include <AzToolsFramework/Viewport/ViewportMessages.h>
 
 namespace Hammer
 {
@@ -40,6 +41,36 @@ namespace Hammer
         {
             return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/RotateSpeed", 0.005));
         };
+
+        // Matches the real Editor viewport's free-look cursor handling (Code/Editor/
+        // EditorModularViewportCameraComposer.cpp). Without this, the OS cursor never enters
+        // AzFramework::SystemCursorState::ConstrainedAndHidden while looking around, which breaks
+        // two things downstream: the cursor stays visible instead of hiding during the look-drag,
+        // and AzToolsFramework::EditorContextMenuUpdate (Code/Framework/AzToolsFramework/
+        // AzToolsFramework/Viewport/EditorContextMenu.cpp) treats the drag's mouse-up as an
+        // uncaptured click and spawns the entity-creation context menu.
+        const auto captureCursorForLook = []
+        {
+            return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/CaptureCursorLook", true);
+        };
+        const auto hideCursor = [viewportId, captureCursorForLook]
+        {
+            if (captureCursorForLook())
+            {
+                AzToolsFramework::ViewportInteraction::ViewportMouseCursorRequestBus::Event(
+                    viewportId, &AzToolsFramework::ViewportInteraction::ViewportMouseCursorRequestBus::Events::BeginCursorCapture);
+            }
+        };
+        const auto showCursor = [viewportId, captureCursorForLook]
+        {
+            if (captureCursorForLook())
+            {
+                AzToolsFramework::ViewportInteraction::ViewportMouseCursorRequestBus::Event(
+                    viewportId, &AzToolsFramework::ViewportInteraction::ViewportMouseCursorRequestBus::Events::EndCursorCapture);
+            }
+        };
+        rotateCamera->SetActivationBeganFn(hideCursor);
+        rotateCamera->SetActivationEndedFn(showCursor);
 
         auto translateCamera = AZStd::make_shared<AzFramework::TranslateCameraInput>(
             translateIds, AzFramework::LookTranslation, AzFramework::TranslatePivotLook);
