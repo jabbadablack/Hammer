@@ -18,25 +18,13 @@ namespace Hammer
     static const auto ManipulatorPriority = AzFramework::ViewportControllerPriority::Highest;
     static const auto InteractionPriority = AzFramework::ViewportControllerPriority::High;
 
-    namespace
-    {
-        AzFramework::ViewportId g_activeHammerViewportId = AzFramework::InvalidViewportId;
-    }
-
-    void SetActiveHammerViewportId(AzFramework::ViewportId viewportId)
-    {
-        g_activeHammerViewportId = viewportId;
-    }
-
-    AzFramework::ViewportId GetActiveHammerViewportId()
-    {
-        return g_activeHammerViewportId;
-    }
-
     HammerViewportManipulatorControllerInstance::HammerViewportManipulatorControllerInstance(
         AzFramework::ViewportId viewport, HammerViewportManipulatorController* controller)
         : AzFramework::MultiViewportControllerInstanceInterface<HammerViewportManipulatorController>(viewport, controller)
+        , m_activeViewportTracker(controller->GetActiveViewportTracker())
     {
+        AZ_Assert(controller, "HammerViewportManipulatorControllerInstance constructed with a null controller");
+        AZ_Assert(m_activeViewportTracker, "HammerViewportManipulatorControllerInstance resolved a null ActiveViewportTracker");
         AzToolsFramework::ViewportInteraction::EditorEntityViewportInteractionRequestBus::Handler::BusConnect(viewport);
         AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler::BusConnect(viewport);
     }
@@ -52,9 +40,6 @@ namespace Hammer
         visibleEntities.assign(m_entityVisibilityQuery.Begin(), m_entityVisibilityQuery.End());
     }
 
-    // Registry keys/defaults below match Code/Editor/EditorViewportSettings.cpp exactly (Editor-private,
-    // so Hammer can't call its SandboxEditor:: free functions directly, but reads the same Settings
-    // Registry keys with the same defaults instead) - see the class comment on these overrides for why.
     bool HammerViewportManipulatorControllerInstance::GridSnappingEnabled() const
     {
         return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/GridSnapping", false);
@@ -112,17 +97,7 @@ namespace Hammer
 
     bool HammerViewportManipulatorControllerInstance::IconsVisible() const
     {
-        // Restricted to just the active viewport, matching how gizmos and the ViewportUi overlay
-        // already behave. Deliberately NOT ANDed with AzToolsFramework::IconsVisible() (the global
-        // user preference) - HammerEditorSystemComponent forces that global setting to false (see
-        // its comment for why: it's the only lever that suppresses the real, permanently-hidden
-        // viewport's own unconditional per-frame icon submission, which - due to a confirmed engine
-        // bug where AZ::RPI::DynamicDrawContext's RenderPipeline output scope is actually
-        // implemented as Scene output scope - was rendering into every Hammer viewport regardless of
-        // this restriction). Reading it here too would mean Hammer's own active viewport never shows
-        // icons either. The tradeoff: toggling the Editor's own "show icons" preference no longer
-        // has any effect on Hammer's viewports specifically.
-        return GetViewportId() == GetActiveHammerViewportId();
+        return GetViewportId() == m_activeViewportTracker->Get();
     }
 
     bool HammerViewportManipulatorControllerInstance::HelpersVisible() const
@@ -245,10 +220,6 @@ namespace Hammer
 
         if (eventType == MouseEvent::Down || eventType == MouseEvent::DoubleClick)
         {
-            // Guarantees the shared pick cache is freshly rebuilt (from this viewport's own
-            // FindVisibleEntities()/m_entityVisibilityQuery) immediately before the click reaches
-            // the interaction bus's hit-test, rather than relying on however recently the last
-            // per-tick UpdateViewport() refresh happened to run.
             RefreshEntityVisibilityCache();
         }
 
@@ -306,9 +277,6 @@ namespace Hammer
     {
         m_currentTime = event.m_time;
 
-        // Mirrors Code/Editor/EditorViewportWidget.cpp's own m_entityVisibilityQuery.UpdateVisibility()
-        // call in its Update() - the same AzFramework::EntityVisibilityQuery class, fully public.
-        // This is what FindVisibleEntities() (below) answers from.
         AzFramework::CameraState cameraState;
         AzToolsFramework::ViewportInteraction::ViewportInteractionRequestBus::EventResult(
             cameraState, GetViewportId(), &AzToolsFramework::ViewportInteraction::ViewportInteractionRequestBus::Events::GetCameraState);
@@ -319,12 +287,6 @@ namespace Hammer
 
     void HammerViewportManipulatorControllerInstance::RefreshEntityVisibilityCache() const
     {
-        // EditorInteractionSystemComponent::DisplayViewport (Code/Framework/AzToolsFramework/.../
-        // EditorInteractionSystemComponent.cpp) is the single, fully public handler that both
-        // populates the visible-entity pick cache used for selection (via this instance's
-        // FindVisibleEntities(), see above) and draws the shared ManipulatorManager's gizmos - it
-        // does all of this internally once this event fires for a given viewport, so no direct
-        // access to the manipulator manager is needed here.
         AzFramework::DebugDisplayRequestBus::BusPtr debugDisplayBus;
         AzFramework::DebugDisplayRequestBus::Bind(debugDisplayBus, GetViewportId());
         if (AzFramework::DebugDisplayRequests* debugDisplay = AzFramework::DebugDisplayRequestBus::FindFirstHandler(debugDisplayBus))

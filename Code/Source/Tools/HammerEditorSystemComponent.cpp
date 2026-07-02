@@ -48,15 +48,13 @@ namespace Hammer
                     AZStd::string_view classView(className);
                     bool isViewport = false;
 
-                    // 1. Check if the widget is a viewport container
-                    if (classView == "EditorViewportWidget" || 
-                        classView == "HammerWidget" || 
+                    if (classView == "EditorViewportWidget" ||
+                        classView == "HammerWidget" ||
                         classView == "HammerViewportLayoutWidget" ||
                         classView == "HammerRenderViewportWidget")
                     {
                         isViewport = true;
                     }
-                    // 2. Check if the widget is a RenderViewportWidget (class QWidget under a viewport container)
                     else if (classView == "QWidget")
                     {
                         if (QWidget* parent = widget->parentWidget())
@@ -65,8 +63,8 @@ namespace Hammer
                             if (parentClassName)
                             {
                                 AZStd::string_view parentClassView(parentClassName);
-                                if (parentClassView == "EditorViewportWidget" || 
-                                    parentClassView == "HammerWidget" || 
+                                if (parentClassView == "EditorViewportWidget" ||
+                                    parentClassView == "HammerWidget" ||
                                     parentClassView == "HammerViewportLayoutWidget")
                                 {
                                     isViewport = true;
@@ -77,7 +75,6 @@ namespace Hammer
 
                     if (isViewport)
                     {
-                        // Unconditionally enforce at least 32x32 size limits to prevent 0-sized render targets and buffers
                         if (widget->minimumWidth() < 32 || widget->minimumHeight() < 32)
                         {
                             widget->setMinimumSize(32, 32);
@@ -137,49 +134,16 @@ namespace Hammer
         HammerSystemComponent::Activate();
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
 
-        // Clears a stale "Layout" value an earlier version of this Gem left in the Windows
-        // registry, which otherwise leaves CLayoutWnd in a broken state at startup. Must use the
-        // same explicit ("O3DE", "O3DE") scope MainWindow::m_settings uses (Code/Editor/
-        // MainWindow.cpp:291) - a bare QSettings() reads QCoreApplication's organization/app name
-        // instead, which is a different registry location and silently no-ops here.
         QSettings settings("O3DE", "O3DE");
         settings.remove("ViewportLayout");
-
-        // QtViewPaneManager persists its dock layout (including which "Perspective" instances
-        // were open) under Editor/fancyWindowLayouts/last (Code/Editor/QtViewPaneManager.cpp:
-        // GetFancyViewPaneStateGroupName/SaveStateToLayout) and restores it during Editor startup,
-        // before Hammer's own code runs. A session where multiple extra "Perspective" instances
-        // were left open (as HammerViewportLayoutWidget used to leave them, hidden but not
-        // destroyed) got persisted there, and restoring it on the next launch crashed inside
-        // EditorViewportWidget::CheckRespondToInput. HammerViewportLayoutWidget now properly
-        // deletes its extra "Perspective" instances instead of just hiding them, so this shouldn't
-        // recur, but this clears out any already-corrupted state from before that fix.
         settings.remove("Editor/fancyWindowLayouts/last");
 
-        // The real Editor viewport (kept alive, permanently off-screen - see
-        // HammerViewportLayoutWidget::SetHiddenRealViewport()) submits entity-icon draw requests
-        // for itself every frame, unconditionally, via a private SceneNotificationBus hook
-        // (EditorViewportWidget::RenderAll(), confirmed by direct source reading to be gated only
-        // on IsInGameMode(), not by Qt visibility or its own input-processing state). Its own
-        // AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::IconsVisible() handler
-        // (Code/Editor/EditorViewportWidget.cpp's EditorViewportSettings) just reads this same
-        // global AzToolsFramework::IconsVisible() preference - the only lever available to suppress
-        // it, since that handler is Editor-private and already registered (stealing its EBus slot
-        // risks corrupting HandlerPolicy::Single's internal state when it later tries to disconnect
-        // itself). Forcing this off here is what actually stops the real viewport from submitting
-        // icons; HammerViewportManipulatorControllerInstance::IconsVisible() (Code/Source/Tools/
-        // HammerViewportManipulatorController.cpp) deliberately does NOT read this same global
-        // value, so Hammer's own active viewport keeps showing icons regardless. Captured/restored
-        // (see Deactivate()) rather than hardcoded, so the user's actual underlying preference isn't
-        // silently lost for the rest of the Editor session if Hammer's pane is ever closed.
         m_originalIconsVisiblePreference = AzToolsFramework::IconsVisible();
         AzToolsFramework::SetIconsVisible(false);
     }
 
     void HammerEditorSystemComponent::Deactivate()
     {
-        // See EmbedViewportInCenter() for why this was forced off; restores whatever the user's
-        // own preference actually was before Hammer touched it.
         AzToolsFramework::SetIconsVisible(m_originalIconsVisiblePreference);
 
         if (m_viewportFilter)
@@ -192,19 +156,12 @@ namespace Hammer
             m_viewportFilter = nullptr;
         }
 
-        // EmbedViewportInCenter() pulled m_viewportLayoutWidget out of m_paneDockWidget to use as
-        // the Editor's central widget directly; give it back before closing the pane through
-        // QtViewPaneManager, since QtViewPane::CloseInstance() sends a QCloseEvent to
-        // dockWidget->widget() - if that were still null (or pointing at nothing), the close path
-        // would dispatch to a null receiver.
         if (m_paneDockWidget && m_viewportLayoutWidget)
         {
             m_viewportLayoutWidget->hide();
             m_paneDockWidget->setWidget(m_viewportLayoutWidget);
         }
 
-        // Closing/unregistering the pane lets QtViewPaneManager drive teardown order, the same
-        // way it does for every other Editor pane, instead of us manually nulling widget pointers.
         AzToolsFramework::CloseViewPane(ViewportPaneName);
         AzToolsFramework::UnregisterViewPane(ViewportPaneName);
         m_paneDockWidget = nullptr;
@@ -216,9 +173,6 @@ namespace Hammer
 
     void HammerEditorSystemComponent::NotifyRegisterViews()
     {
-        // This is the Editor-startup point where the EditorRequests bus handler that actually
-        // implements pane registration (SandboxIntegrationManager) is guaranteed to be connected;
-        // registering from Activate() is too early and silently no-ops.
         RegisterViewportPane();
     }
 
@@ -262,10 +216,6 @@ namespace Hammer
             return;
         }
 
-        // EditorViewportWidget is a private Editor class, so it's found generically by its Qt
-        // class name rather than by including its header. It's not a registered view pane (the
-        // real Editor never registers it as one - it's created directly as part of CLayoutWnd),
-        // so this walk is the only way to locate the QMainWindow that hosts it.
         QWidget* oldViewport = nullptr;
         for (QWidget* child : mainWindowWidget->findChildren<QWidget*>())
         {
@@ -281,8 +231,6 @@ namespace Hammer
             return;
         }
 
-        // Walk up to the QMainWindow whose central widget hosts the viewport (Code/Editor/MainWindow.cpp: m_viewPaneHost).
-        // This is the same QMainWindow that QtViewPaneManager docks every other pane into.
         QMainWindow* viewPaneHost = nullptr;
         for (QWidget* ancestor = oldViewport->parentWidget(); ancestor; ancestor = ancestor->parentWidget())
         {
@@ -298,28 +246,8 @@ namespace Hammer
             return;
         }
 
-        // Captured before the central-widget swap below: this is the actual widget
-        // viewPaneHost->setCentralWidget() will detach (CLayoutWnd, hosting oldViewport), not
-        // oldViewport itself. Qt's setCentralWidget() does not delete the outgoing central widget -
-        // it only hides it and drops it from the QMainWindowLayout, leaving it alive as an orphaned
-        // child of viewPaneHost. Left in that state, it kept receiving queued Qt metacalls (visible
-        // in Editor.log as a callstack through EditorViewportWidget's private slot into
-        // ReflectionScreenSpaceTracePass::BuildInternal) that rebuilt its Atom render pipeline
-        // against invalid/stale geometry and crashed on a null AttachmentImage. Fully unparenting it
-        // (not just hiding it) removes it from viewPaneHost's widget tree entirely so it stops
-        // receiving those events.
         QWidget* oldCentralWidget = viewPaneHost->centralWidget();
 
-        // Frees the reserved "default" AZ::RPI::ViewportContext name/designation from the real
-        // viewport's context BEFORE any Hammer viewport gets a chance to try claiming it (see
-        // HammerWidget::ApplyActiveState()) - must happen before OpenViewPane()/content->show()
-        // below, since that can synchronously trigger the first Hammer viewport's showEvent/
-        // resizeEvent chain (InitializeSceneIfReady -> ApplyActiveState) within this same call.
-        // Doing this after that point let slot 0's very first claim attempt lose the race - the
-        // real viewport's context still held the name at that moment, so
-        // AZ::RPI::ViewportContextManager::RenameViewportContext() rejected it (asserts and
-        // silently no-ops on a name collision) and no later attempt ever retried, since nothing
-        // else changes viewport activation on its own.
         AZ_Assert(oldViewport, "oldViewport must be non-null here - already checked above");
         if (auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get())
         {
@@ -333,17 +261,6 @@ namespace Hammer
             }
         }
 
-        // AzToolsFramework::InstanceViewPane() unconditionally creates a brand-new pane instance on
-        // every call (QtViewPaneManager::InstancePane always passes OpenMode::MultiplePanes,
-        // appending to the pane's m_dockWidgetInstances list rather than reusing its single
-        // canonical m_dockWidget - confirmed in Code/Editor/QtViewPaneManager.cpp). That meant any
-        // extra trigger of this function - or of Qt/QtViewPaneManager's own startup pane-restore, or
-        // the "Hammer Viewport" Tools-menu entry this pane's showInMenu=true enables - produced a
-        // second, untouched HammerViewportLayoutWidget left floating with its default 4 HammerWidget
-        // slots, alongside the one this function correctly embeds and overrides. OpenViewPane()
-        // (QtViewPaneManager::OpenPane without MultiplePanes) only constructs a widget if the pane
-        // isn't already constructed, and reuses/reactivates the existing one otherwise - so no
-        // matter how many times "Hammer Viewport" gets opened, there's only ever one instance.
         AzToolsFramework::OpenViewPane(ViewportPaneName);
         QWidget* content = AzToolsFramework::GetViewPaneWidget<QWidget>(ViewportPaneName);
         AZ_Error("HammerEditorSystemComponent", content, "Could not open the '%s' view pane", ViewportPaneName);
@@ -355,8 +272,6 @@ namespace Hammer
             content == m_viewportLayoutWidget, "Opened '%s' view pane's content is not the HammerViewportLayoutWidget it was given",
             ViewportPaneName);
 
-        // QDockWidget::setWidget() reparents its content widget directly under itself, so the dock
-        // widget hosting this pane is content's immediate Qt parent.
         m_paneDockWidget = qobject_cast<QDockWidget*>(content->parentWidget());
         AZ_Error("HammerEditorSystemComponent", m_paneDockWidget, "Could not find the dock widget hosting the '%s' view pane", ViewportPaneName);
         if (!m_paneDockWidget)
@@ -364,17 +279,6 @@ namespace Hammer
             return;
         }
 
-        // The QDockWidget itself can never be shown as - or inside - the central widget: it was
-        // briefly tried directly (viewPaneHost->setCentralWidget(m_paneDockWidget)) and crashed as
-        // soon as it received a show event, because AzQtComponents::FancyDocking installs a global
-        // event filter (FancyDocking::UpdateTitleBars) that assumes every QDockWidget is either
-        // normally docked or hosted inside a genuine floating window, and null-derefs otherwise.
-        // So instead: pull the pane's plain content widget out and use *that* as the central
-        // widget - FancyDocking only reacts to QDockWidgets, not plain QWidgets, so this sidesteps
-        // it entirely. The now-empty m_paneDockWidget is detached from the normal dock-area layout
-        // and hidden (not deleted) purely so QtViewPaneManager's bookkeeping stays valid for the
-        // later CloseViewPane/UnregisterViewPane calls in Deactivate(), which restores content
-        // back into it first.
         viewPaneHost->removeDockWidget(m_paneDockWidget);
         m_paneDockWidget->hide();
         m_paneDockWidget->setWidget(nullptr);
@@ -382,40 +286,12 @@ namespace Hammer
         viewPaneHost->setCentralWidget(content);
         content->show();
 
-        // See the comment above where oldCentralWidget was captured: setCentralWidget() only hides
-        // and unparents-from-the-layout the previous central widget, it does not delete or fully
-        // detach it. Explicitly unparenting it here (rather than leaving it as a hidden child of
-        // viewPaneHost) stops it from continuing to receive Qt events/queued metacalls that were
-        // driving it to rebuild its render pipeline in a bad state. Not deleted outright: destroying
-        // its Atom render pipeline here risks the already-diagnosed ~ViewportContext ->
-        // Scene::RemoveRenderPipeline pass-tree-rebuild crash from tearing one pipeline down while
-        // Hammer's own are still being brought up.
         if (oldCentralWidget && oldCentralWidget != content)
         {
             oldCentralWidget->hide();
             oldCentralWidget->setParent(nullptr);
         }
 
-        // oldViewport (the real EditorViewportWidget) is a descendant of oldCentralWidget, which is
-        // now an orphaned, hidden widget detached above - any Qt event-chain reaction it has to
-        // losing a child fires while it's already inert, not while it was still the live central
-        // widget. Pulling oldViewport out here and keeping it alive-but-permanently-hidden (never
-        // shown in Hammer's grid, which always uses HammerWidget for every slot) is meant to
-        // satisfy Editor/AzToolsFramework systems - the single-address Camera::EditorCameraRequestBus/
-        // CameraNotificationBus handlers, and the static m_pPrimaryViewport - that are only ever
-        // implemented by a real EditorViewportWidget instance and apparently expect one to exist
-        // somewhere, even if never displayed. It was never routed through
-        // AzToolsFramework::InstanceViewPane("Perspective"), which deterministically null-derefs in
-        // EditorViewportWidget::CheckRespondToInput on m_renderViewport for any newly-constructed
-        // instance (SetViewportId(), the only thing that constructs m_renderViewport, is never
-        // called on that construction path) - a separate, unavoidable-by-us Editor-private bug we
-        // are not attempting to work around here.
-        // Reparented directly from its current (already-detached, hidden) parent straight to
-        // Hammer's grid container in one setParent() call, not via an intermediate setParent(nullptr)
-        // step - going through nullptr briefly makes Qt treat the widget as a genuine top-level
-        // window, which for a native-surface/GPU-rendered widget like this one can cause its
-        // underlying native window handle to be recreated or repositioned/resized using default
-        // top-level placement.
         AZ_Assert(m_viewportLayoutWidget, "m_viewportLayoutWidget is null after being validated as 'content' above");
         m_viewportLayoutWidget->SetHiddenRealViewport(oldViewport);
     }

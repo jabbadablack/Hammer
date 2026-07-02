@@ -9,12 +9,92 @@ namespace Hammer
 {
     namespace
     {
-        // Same Settings Registry keys the real Editor viewport's camera reads (Code/Editor/EditorViewportSettings.cpp),
-        // so Hammer's viewports pick up whatever camera preferences the user has already configured.
         AzFramework::InputChannelId RegistryChannelId(const char* setting, const char* defaultId)
         {
             return AzFramework::InputChannelId(AzToolsFramework::GetRegistry(setting, AZStd::string(defaultId)).c_str());
         }
+
+        class ViewportCameraControllerBuilder
+        {
+        public:
+            ViewportCameraControllerBuilder()
+                : m_controller(AZStd::make_shared<AtomToolsFramework::ModularViewportCameraController>())
+            {
+                AZ_Assert(m_controller, "Failed to allocate ModularViewportCameraController");
+            }
+
+            ViewportCameraControllerBuilder& WithViewportContext(AzFramework::ViewportId viewportId)
+            {
+                m_controller->SetCameraViewportContextBuilderCallback(
+                    [viewportId](AZStd::unique_ptr<AtomToolsFramework::ModularCameraViewportContext>& cameraViewportContext)
+                    {
+                        cameraViewportContext = AZStd::make_unique<AtomToolsFramework::ModularCameraViewportContextImpl>(viewportId);
+                    });
+                return *this;
+            }
+
+            ViewportCameraControllerBuilder& WithDefaultPriority()
+            {
+                m_controller->SetCameraPriorityBuilderCallback(
+                    [](AtomToolsFramework::CameraControllerPriorityFn& priorityFn)
+                    {
+                        priorityFn = AtomToolsFramework::DefaultCameraControllerPriority;
+                    });
+                return *this;
+            }
+
+            ViewportCameraControllerBuilder& WithCameraProps()
+            {
+                m_controller->SetCameraPropsBuilderCallback(
+                    [](AzFramework::CameraProps& cameraProps)
+                    {
+                        cameraProps.m_rotateSmoothnessFn = []
+                        {
+                            return aznumeric_cast<float>(
+                                AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/RotateSmoothness", 5.0));
+                        };
+                        cameraProps.m_translateSmoothnessFn = []
+                        {
+                            return aznumeric_cast<float>(
+                                AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/TranslateSmoothness", 5.0));
+                        };
+                        cameraProps.m_rotateSmoothingEnabledFn = []
+                        {
+                            return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/RotateSmoothing", true);
+                        };
+                        cameraProps.m_translateSmoothingEnabledFn = []
+                        {
+                            return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/TranslateSmoothing", true);
+                        };
+                    });
+                return *this;
+            }
+
+            ViewportCameraControllerBuilder& WithCameras(
+                AZStd::shared_ptr<AzFramework::RotateCameraInput> rotateCamera,
+                AZStd::shared_ptr<AzFramework::TranslateCameraInput> translateCamera,
+                AZStd::shared_ptr<AzFramework::LookScrollTranslationCameraInput> scrollCamera,
+                AZStd::shared_ptr<AzFramework::OrbitCameraInput> orbitCamera)
+            {
+                m_controller->SetCameraListBuilderCallback(
+                    [rotateCamera, translateCamera, scrollCamera, orbitCamera](AzFramework::Cameras& cameras)
+                    {
+                        cameras.AddCamera(rotateCamera);
+                        cameras.AddCamera(translateCamera);
+                        cameras.AddCamera(scrollCamera);
+                        cameras.AddCamera(orbitCamera);
+                    });
+                return *this;
+            }
+
+            AZStd::shared_ptr<AtomToolsFramework::ModularViewportCameraController> Build() const
+            {
+                return m_controller;
+            }
+
+        private:
+            AZStd::shared_ptr<AtomToolsFramework::ModularViewportCameraController> m_controller;
+        };
     }
 
     AzFramework::ViewportControllerPtr CreateViewportCameraController(AzFramework::ViewportId viewportId)
@@ -37,18 +117,12 @@ namespace Hammer
 
         auto rotateCamera = AZStd::make_shared<AzFramework::RotateCameraInput>(
             RegistryChannelId("/Amazon/Preferences/Editor/Camera/FreeLookId", "mouse_button_right"));
+        AZ_Assert(rotateCamera, "Failed to allocate RotateCameraInput");
         rotateCamera->m_rotateSpeedFn = []
         {
             return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/RotateSpeed", 0.005));
         };
 
-        // Matches the real Editor viewport's free-look cursor handling (Code/Editor/
-        // EditorModularViewportCameraComposer.cpp). Without this, the OS cursor never enters
-        // AzFramework::SystemCursorState::ConstrainedAndHidden while looking around, which breaks
-        // two things downstream: the cursor stays visible instead of hiding during the look-drag,
-        // and AzToolsFramework::EditorContextMenuUpdate (Code/Framework/AzToolsFramework/
-        // AzToolsFramework/Viewport/EditorContextMenu.cpp) treats the drag's mouse-up as an
-        // uncaptured click and spawns the entity-creation context menu.
         const auto captureCursorForLook = []
         {
             return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/CaptureCursorLook", true);
@@ -74,6 +148,7 @@ namespace Hammer
 
         auto translateCamera = AZStd::make_shared<AzFramework::TranslateCameraInput>(
             translateIds, AzFramework::LookTranslation, AzFramework::TranslatePivotLook);
+        AZ_Assert(translateCamera, "Failed to allocate TranslateCameraInput");
         translateCamera->m_translateSpeedFn = []
         {
             return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/TranslateSpeed", 10.0));
@@ -91,6 +166,7 @@ namespace Hammer
 
         auto orbitCamera = AZStd::make_shared<AzFramework::OrbitCameraInput>(
             RegistryChannelId("/Amazon/Preferences/Editor/Camera/OrbitId", "keyboard_key_modifier_alt_l"));
+        AZ_Assert(orbitCamera, "Failed to allocate OrbitCameraInput");
         orbitCamera->SetPivotFn(
             [](const AZ::Vector3& position, const AZ::Vector3& direction)
             {
@@ -115,47 +191,11 @@ namespace Hammer
         orbitCamera->m_orbitCameras.AddCamera(orbitTranslateCamera);
         orbitCamera->m_orbitCameras.AddCamera(orbitScrollDollyCamera);
 
-        auto cameraController = AZStd::make_shared<AtomToolsFramework::ModularViewportCameraController>();
-        cameraController->SetCameraViewportContextBuilderCallback(
-            [viewportId](AZStd::unique_ptr<AtomToolsFramework::ModularCameraViewportContext>& cameraViewportContext)
-            {
-                cameraViewportContext = AZStd::make_unique<AtomToolsFramework::ModularCameraViewportContextImpl>(viewportId);
-            });
-        cameraController->SetCameraPriorityBuilderCallback(
-            [](AtomToolsFramework::CameraControllerPriorityFn& priorityFn)
-            {
-                priorityFn = AtomToolsFramework::DefaultCameraControllerPriority;
-            });
-        cameraController->SetCameraPropsBuilderCallback(
-            [](AzFramework::CameraProps& cameraProps)
-            {
-                cameraProps.m_rotateSmoothnessFn = []
-                {
-                    return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/RotateSmoothness", 5.0));
-                };
-                cameraProps.m_translateSmoothnessFn = []
-                {
-                    return aznumeric_cast<float>(
-                        AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/TranslateSmoothness", 5.0));
-                };
-                cameraProps.m_rotateSmoothingEnabledFn = []
-                {
-                    return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/RotateSmoothing", true);
-                };
-                cameraProps.m_translateSmoothingEnabledFn = []
-                {
-                    return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/TranslateSmoothing", true);
-                };
-            });
-        cameraController->SetCameraListBuilderCallback(
-            [rotateCamera, translateCamera, scrollCamera, orbitCamera](AzFramework::Cameras& cameras)
-            {
-                cameras.AddCamera(rotateCamera);
-                cameras.AddCamera(translateCamera);
-                cameras.AddCamera(scrollCamera);
-                cameras.AddCamera(orbitCamera);
-            });
-
-        return cameraController;
+        return ViewportCameraControllerBuilder()
+            .WithViewportContext(viewportId)
+            .WithDefaultPriority()
+            .WithCameraProps()
+            .WithCameras(rotateCamera, translateCamera, scrollCamera, orbitCamera)
+            .Build();
     }
 }

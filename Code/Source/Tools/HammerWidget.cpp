@@ -36,9 +36,12 @@ namespace Hammer
         }
     };
 
-    HammerWidget::HammerWidget(QWidget* parent)
+    HammerWidget::HammerWidget(QWidget* parent, AZStd::shared_ptr<ActiveViewportTracker> activeViewportTracker)
         : QWidget(parent)
+        , m_activeViewportTracker(AZStd::move(activeViewportTracker))
     {
+        AZ_Assert(m_activeViewportTracker, "HammerWidget constructed with a null ActiveViewportTracker");
+
         QVBoxLayout* mainLayout = new QVBoxLayout(this);
         mainLayout->setContentsMargins(0, 0, 0, 0);
         mainLayout->setSpacing(0);
@@ -86,32 +89,11 @@ namespace Hammer
     {
         m_viewportWidget->SetInputProcessingEnabled(m_active);
 
-        // Lets HammerViewportManipulatorControllerInstance::IconsVisible() (Code/Source/Tools/
-        // HammerViewportManipulatorController.cpp) restrict entity icon rendering to just the
-        // active viewport - see the comment there for why that's needed. No corresponding "clear on
-        // deactivate" call: exactly one Hammer viewport is always active (this function only ever
-        // runs with m_active == true for whichever slot HammerViewportLayoutWidget just activated,
-        // immediately after deactivating every sibling), so the next activation's call here is
-        // always what keeps this correct.
         if (m_active)
         {
-            SetActiveHammerViewportId(m_viewportWidget->GetId());
+            m_activeViewportTracker->Set(m_viewportWidget->GetId());
         }
 
-        // Entity icons are only ever *submitted* for the active Hammer viewport (see
-        // HammerViewportManipulatorControllerInstance::IconsVisible()), but a confirmed engine bug
-        // means that one submission still renders into every Hammer viewport's pipeline: the icon
-        // shader (Gems/AtomLyIntegration/AtomViewportDisplayIcons/Assets/Shaders/TexturedIcon.shader)
-        // uses the "2dpass" DrawListTag, and AZ::RPI::DynamicDrawContext's RenderPipeline output
-        // scope is actually implemented as Scene output scope (Gems/Atom/RPI/Code/Source/RPI.Public/
-        // DynamicDraw/DynamicDrawContext.cpp), so anything submitted to that draw list gets executed
-        // by every pipeline sharing this Gem's AZ::RPI::Scene, not just the one that submitted it.
-        // The pass that actually consumes "2dpass" is a specific, uniquely-named "2DPass"
-        // (Gems/Atom/Feature/Common/Assets/Passes/UIParent.pass) - each Hammer viewport's pipeline
-        // has its own separate instance of it (built from the same default pipeline template), so
-        // disabling it here for inactive viewports stops them from drawing whatever leaked into that
-        // shared list at all, without affecting the active viewport's own instance or anything else
-        // in the pass tree.
         if (AZ::RPI::ViewportContextPtr viewportContext = m_viewportWidget->GetViewportContext())
         {
             if (AZ::RPI::RenderPipelinePtr pipeline = viewportContext->GetCurrentPipeline())
@@ -127,33 +109,18 @@ namespace Hammer
             }
         }
 
-        // AtomViewportDisplayInfoSystemComponent (the FPS/resolution/render-pipeline debug text
-        // overlay, Gems/AtomLyIntegration/AtomViewportDisplayInfo) - and potentially other
-        // Atom/Editor systems - unconditionally read AZ::RPI::ViewportContextRequestsInterface::
-        // GetDefaultViewportContext() rather than whichever viewport they're actually drawing into.
-        // HammerViewportLayoutWidget::SetHiddenRealViewport() already frees the "default"
-        // ViewportContext name/designation from the real (permanently hidden, no-longer-resized)
-        // Editor viewport once, at startup, so it's available to claim here. Claiming it for
-        // whichever Hammer viewport is actually active - and releasing it again on deactivation, so
-        // the next-activated viewport can claim it in turn - keeps that reference pointed at
-        // something live and correctly sized. AZ::RPI::ViewportContextManager::RenameViewportContext()
-        // asserts and silently no-ops if the target name is already claimed by another context, so
-        // both branches below check the current name first to avoid redundant/erroneous calls.
         if (auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get())
         {
             AZ::RPI::ViewportContextPtr viewportContext = m_viewportWidget->GetViewportContext();
             const AZ::Name defaultName = viewportContextManager->GetDefaultViewportContextName();
-            if (m_active)
+            const AZ::Name currentName = viewportContext->GetName();
+            const AZ::Name desiredName = m_active
+                ? defaultName
+                : AZ::Name(AZStd::string::format("Hammer Viewport %u", static_cast<unsigned>(m_viewportWidget->GetId())));
+            const bool shouldRename = m_active ? currentName != defaultName : currentName == defaultName;
+            if (shouldRename)
             {
-                if (viewportContext->GetName() != defaultName)
-                {
-                    viewportContextManager->RenameViewportContext(viewportContext, defaultName);
-                }
-            }
-            else if (viewportContext->GetName() == defaultName)
-            {
-                viewportContextManager->RenameViewportContext(
-                    viewportContext, AZ::Name(AZStd::string::format("Hammer Viewport %u", static_cast<unsigned>(m_viewportWidget->GetId()))));
+                viewportContextManager->RenameViewportContext(viewportContext, desiredName);
             }
         }
     }
@@ -180,14 +147,9 @@ namespace Hammer
             }
         }
 
-        // Every viewport gets its own independent camera controller, matching the default Editor
-        // viewport's feel.
         m_viewportWidget->GetControllerList()->Add(CreateViewportCameraController(m_viewportWidget->GetId()));
-        m_viewportWidget->GetControllerList()->Add(AZStd::make_shared<HammerViewportManipulatorController>());
+        m_viewportWidget->GetControllerList()->Add(AZStd::make_shared<HammerViewportManipulatorController>(m_activeViewportTracker));
 
-        // Applies whatever active state was requested via SetActive() before the controller list
-        // existed (e.g. HammerViewportLayoutWidget seeding the initially-active slot at
-        // construction time, before any HammerWidget has necessarily finished initializing).
         ApplyActiveState();
     }
 }
