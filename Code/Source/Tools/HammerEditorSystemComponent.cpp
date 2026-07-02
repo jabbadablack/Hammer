@@ -13,6 +13,8 @@
 #include <QEvent>
 #include <QChildEvent>
 
+#include <Atom/RPI.Public/ViewportContext.h>
+#include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 #include <AzFramework/Windowing/WindowBus.h>
 
@@ -283,6 +285,29 @@ namespace Hammer
         // (not just hiding it) removes it from viewPaneHost's widget tree entirely so it stops
         // receiving those events.
         QWidget* oldCentralWidget = viewPaneHost->centralWidget();
+
+        // Frees the reserved "default" AZ::RPI::ViewportContext name/designation from the real
+        // viewport's context BEFORE any Hammer viewport gets a chance to try claiming it (see
+        // HammerWidget::ApplyActiveState()) - must happen before OpenViewPane()/content->show()
+        // below, since that can synchronously trigger the first Hammer viewport's showEvent/
+        // resizeEvent chain (InitializeSceneIfReady -> ApplyActiveState) within this same call.
+        // Doing this after that point let slot 0's very first claim attempt lose the race - the
+        // real viewport's context still held the name at that moment, so
+        // AZ::RPI::ViewportContextManager::RenameViewportContext() rejected it (asserts and
+        // silently no-ops on a name collision) and no later attempt ever retried, since nothing
+        // else changes viewport activation on its own.
+        AZ_Assert(oldViewport, "oldViewport must be non-null here - already checked above");
+        if (auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get())
+        {
+            AZ::RPI::ViewportContextPtr defaultContext = viewportContextManager->GetDefaultViewportContext();
+            AZ_Error(
+                "HammerEditorSystemComponent", defaultContext,
+                "Could not find the current default ViewportContext to free its name from the real viewport");
+            if (defaultContext)
+            {
+                viewportContextManager->RenameViewportContext(defaultContext, AZ::Name("Hammer Hidden Perspective Viewport"));
+            }
+        }
 
         // AzToolsFramework::InstanceViewPane() unconditionally creates a brand-new pane instance on
         // every call (QtViewPaneManager::InstancePane always passes OpenMode::MultiplePanes,

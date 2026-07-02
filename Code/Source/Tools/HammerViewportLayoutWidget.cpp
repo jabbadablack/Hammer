@@ -4,11 +4,13 @@
 #include <AzCore/std/algorithm.h>
 #include <Atom/RPI.Public/ViewportContext.h>
 #include <Atom/RPI.Public/ViewportContextBus.h>
+#include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace Hammer
@@ -43,6 +45,10 @@ namespace Hammer
         outerLayout->addWidget(m_gridContainer, /*stretch*/ 1);
 
         SetViewportCount(4);
+
+        m_realViewportSyncTimer = new QTimer(this);
+        connect(m_realViewportSyncTimer, &QTimer::timeout, this, &HammerViewportLayoutWidget::SyncRealViewportToActive);
+        m_realViewportSyncTimer->start(100);
     }
 
     void HammerViewportLayoutWidget::SetViewportCount(int count)
@@ -79,11 +85,13 @@ namespace Hammer
                         {
                             sibling->SetActive(sibling == viewport);
                         }
+                        m_activeViewport = viewport;
                     });
             }
 
             // Seeds the initially-active viewport; every other slot already defaults to inactive.
             m_viewports[0]->SetActive(true);
+            m_activeViewport = m_viewports[0];
         }
 
         for (HammerWidget* viewport : m_viewports)
@@ -119,31 +127,68 @@ namespace Hammer
         }
 
         // Parented here so it's kept alive for this widget's whole lifetime, but never added to
-        // m_gridLayout - it's not shown in any slot, ever. See the header comment on
-        // SetHiddenRealViewport() for why keeping the object alive (not necessarily visible)
-        // still matters.
+        // m_gridLayout - it's not shown in any slot, ever, all of which always use HammerWidget.
+        // See the header comment on SetHiddenRealViewport() for the full rationale. The real
+        // viewport's default-ViewportContext-name handoff to Hammer's own viewports happens
+        // earlier, in HammerEditorSystemComponent::EmbedViewportInCenter() - before this function
+        // is even called - see the comment there for why the timing matters.
+        AZ_Assert(m_gridContainer, "m_gridContainer must be constructed before hosting the real viewport");
         realViewport->setParent(m_gridContainer);
-        realViewport->hide();
+
+        // Genuinely Qt-visible (not hidden) - confirmed by direct source reading that
+        // EditorViewportWidget::Update() (Code/Editor/EditorViewportWidget.cpp:426-429)
+        // unconditionally early-returns on !isVisible(), and that's what drives its ViewportUi
+        // overlay (the transform-mode/reference-space/component-mode widgets this whole thing is
+        // for). SyncRealViewportToActive() (driven by m_realViewportSyncTimer, started in the
+        // constructor) continuously repositions and camera-syncs this widget to the active Hammer
+        // viewport, so the user perceives it as part of that viewport rather than a second,
+        // independent one - see that function for the full rationale.
+        realViewport->show();
         m_hiddenRealViewport = realViewport;
 
-        // The real viewport's AZ::RPI::ViewportContext was created first (at Editor startup, long
-        // before any Hammer viewport exists), so it still holds the reserved "default" context
-        // name/designation. AZ::RPI::ViewportContextManager::RenameViewportContext() refuses to
-        // reassign a name that's already claimed (asserts and silently no-ops) - so as long as the
-        // real viewport keeps squatting that name, HammerWidget::ApplyActiveState()'s attempt to
-        // claim it for the active Hammer viewport can never succeed, and anything reading
-        // GetDefaultViewportContext() (e.g. the FPS/resolution debug text overlay) keeps reading
-        // this now-hidden, no-longer-resized viewport's stale size. Freeing the name here, once,
-        // lets the active-viewport claim in HammerWidget actually take effect.
         if (auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get())
         {
-            AZ::RPI::ViewportContextPtr defaultContext = viewportContextManager->GetDefaultViewportContext();
+            m_hiddenRealViewportContext = viewportContextManager->GetViewportContextByName(AZ::Name("Hammer Hidden Perspective Viewport"));
             AZ_Error(
-                "HammerViewportLayoutWidget", defaultContext,
-                "Could not find the current default ViewportContext to free its name from the real viewport");
-            if (defaultContext)
+                "HammerViewportLayoutWidget", m_hiddenRealViewportContext,
+                "Could not resolve the real viewport's own ViewportContext by name - camera syncing will not work");
+        }
+    }
+
+    void HammerViewportLayoutWidget::SyncRealViewportToActive()
+    {
+        if (!m_hiddenRealViewport || !m_activeViewport)
+        {
+            return;
+        }
+        AZ_Assert(m_gridContainer, "m_gridContainer must exist by the time viewports are being tracked");
+        AZ_Assert(
+            m_hiddenRealViewport->parentWidget() == m_gridContainer,
+            "m_hiddenRealViewport is expected to remain parented to m_gridContainer - geometry below is computed relative to it");
+
+        // Keeps the real viewport positioned/sized exactly over the active Hammer viewport, so its
+        // ViewportUi overlay (which derives its own position/size from this widget's geometry via
+        // a private code path we can't call into directly) ends up in the right place. Coordinates
+        // must be converted since m_hiddenRealViewport's Qt parent is m_gridContainer, not the
+        // desktop.
+        const QPoint activeGlobalTopLeft = m_activeViewport->mapToGlobal(QPoint(0, 0));
+        const QPoint relativeTopLeft = m_gridContainer->mapFromGlobal(activeGlobalTopLeft);
+        m_hiddenRealViewport->setGeometry(
+            relativeTopLeft.x(), relativeTopLeft.y(), m_activeViewport->width(), m_activeViewport->height());
+
+        // Keeps the real viewport's own camera matching the active Hammer viewport's, so even
+        // though it's genuinely visible (see SetHiddenRealViewport()) and positioned directly over
+        // the active viewport, its own render shows the identical scene from the identical angle -
+        // nothing for the user to perceive as a second, competing viewport, regardless of how the
+        // two native render surfaces end up Z-ordered relative to each other.
+        AtomToolsFramework::RenderViewportWidget* activeViewportWidget = m_activeViewport->GetViewportWidget();
+        AZ_Assert(activeViewportWidget, "The active HammerWidget must have a valid RenderViewportWidget by now");
+        if (m_hiddenRealViewportContext && activeViewportWidget)
+        {
+            AZ::RPI::ViewportContextPtr activeContext = activeViewportWidget->GetViewportContext();
+            if (activeContext)
             {
-                viewportContextManager->RenameViewportContext(defaultContext, AZ::Name("Hammer Hidden Perspective Viewport"));
+                m_hiddenRealViewportContext->SetCameraTransform(activeContext->GetCameraTransform());
             }
         }
     }
