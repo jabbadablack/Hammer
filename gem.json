@@ -3,9 +3,9 @@
     "version": "1.0.0",
     "display_name": "Hammer",
     "license": "Apache-2.0 and MIT",
-    "license_url": "",
+    "license_url": "https://github.com/jabbadablack/Hammer/blob/master/LICENSE",
     "origin": "JabbaDaBlack",
-    "origin_url": "",
+    "origin_url": "https://github.com/jabbadablack",
     "type": "Code",
     "summary": "",
     "canonical_tags": ["Gem"],
@@ -14,8 +14,8 @@
     "icon_path": "",
     "requirements": "",
     "documentation_url": "",
-    "dependencies": ["Atom", "AtomLyIntegration"],
-    "repo_uri": "",
+    "dependencies": ["Atom", "AzToolsFramework"],
+    "repo_uri": "https://github.com/jabbadablack/Hammer",
     "compatible_engines": [],
     "engine_api_dependencies": []
 }
