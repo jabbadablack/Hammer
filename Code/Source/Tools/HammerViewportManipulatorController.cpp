@@ -1,12 +1,11 @@
 #include "HammerViewportManipulatorController.h"
+#include "HammerEditorViewportSettings.h"
 
 #include <AzFramework/Entity/EntityDebugDisplayBus.h>
 #include <AzFramework/Input/Buses/Requests/InputSystemCursorRequestBus.h>
 #include <AzFramework/Input/Devices/Mouse/InputDeviceMouse.h>
 #include <AzFramework/Viewport/ScreenGeometry.h>
 #include <AzFramework/Viewport/ViewportScreen.h>
-#include <AzToolsFramework/API/SettingsRegistryUtils.h>
-#include <AzToolsFramework/Viewport/ViewportSettings.h>
 #include <AzToolsFramework/ViewportSelection/EditorInteractionSystemViewportSelectionRequestBus.h>
 #include <AzToolsFramework/ViewportSelection/EditorSelectionUtil.h>
 #include <AzToolsFramework/Viewport/ViewportInteractionHelpers.h>
@@ -21,93 +20,21 @@ namespace Hammer
     HammerViewportManipulatorControllerInstance::HammerViewportManipulatorControllerInstance(
         AzFramework::ViewportId viewport, HammerViewportManipulatorController* controller)
         : AzFramework::MultiViewportControllerInstanceInterface<HammerViewportManipulatorController>(viewport, controller)
-        , m_activeViewportTracker(controller->GetActiveViewportTracker())
+        , m_viewportSettings(AZStd::make_unique<HammerEditorViewportSettings>(viewport, controller->GetActiveViewportTracker()))
     {
         AZ_Assert(controller, "HammerViewportManipulatorControllerInstance constructed with a null controller");
-        AZ_Assert(m_activeViewportTracker, "HammerViewportManipulatorControllerInstance resolved a null ActiveViewportTracker");
+        AZ_Assert(m_viewportSettings, "HammerViewportManipulatorControllerInstance failed to allocate its HammerEditorViewportSettings");
         AzToolsFramework::ViewportInteraction::EditorEntityViewportInteractionRequestBus::Handler::BusConnect(viewport);
-        AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler::BusConnect(viewport);
     }
 
     HammerViewportManipulatorControllerInstance::~HammerViewportManipulatorControllerInstance()
     {
-        AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler::BusDisconnect();
         AzToolsFramework::ViewportInteraction::EditorEntityViewportInteractionRequestBus::Handler::BusDisconnect();
     }
 
     void HammerViewportManipulatorControllerInstance::FindVisibleEntities(AZStd::vector<AZ::EntityId>& visibleEntities)
     {
         visibleEntities.assign(m_entityVisibilityQuery.Begin(), m_entityVisibilityQuery.End());
-    }
-
-    bool HammerViewportManipulatorControllerInstance::GridSnappingEnabled() const
-    {
-        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/GridSnapping", false);
-    }
-
-    float HammerViewportManipulatorControllerInstance::GridSize() const
-    {
-        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/GridSize", 0.1));
-    }
-
-    bool HammerViewportManipulatorControllerInstance::ShowGrid() const
-    {
-        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/ShowGrid", false);
-    }
-
-    bool HammerViewportManipulatorControllerInstance::AngleSnappingEnabled() const
-    {
-        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/AngleSnapping", false);
-    }
-
-    float HammerViewportManipulatorControllerInstance::AngleStep() const
-    {
-        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/AngleSize", 5.0));
-    }
-
-    float HammerViewportManipulatorControllerInstance::ManipulatorLineBoundWidth() const
-    {
-        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Manipulator/LineBoundWidth", 0.1));
-    }
-
-    float HammerViewportManipulatorControllerInstance::ManipulatorCircleBoundWidth() const
-    {
-        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Manipulator/CircleBoundWidth", 0.1));
-    }
-
-    bool HammerViewportManipulatorControllerInstance::StickySelectEnabled() const
-    {
-        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/StickySelect", false);
-    }
-
-    AZ::Vector3 HammerViewportManipulatorControllerInstance::DefaultEditorCameraPosition() const
-    {
-        return AZ::Vector3(
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/x", 0.0)),
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/y", -10.0)),
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/z", 4.0)));
-    }
-
-    AZ::Vector2 HammerViewportManipulatorControllerInstance::DefaultEditorCameraOrientation() const
-    {
-        return AZ::Vector2(
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPitch", 0.0)),
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingYaw", 0.0)));
-    }
-
-    bool HammerViewportManipulatorControllerInstance::IconsVisible() const
-    {
-        return GetViewportId() == m_activeViewportTracker->Get();
-    }
-
-    bool HammerViewportManipulatorControllerInstance::HelpersVisible() const
-    {
-        return AzToolsFramework::HelpersVisible();
-    }
-
-    bool HammerViewportManipulatorControllerInstance::OnlyShowHelpersForSelectedEntities() const
-    {
-        return AzToolsFramework::OnlyShowHelpersForSelectedEntities();
     }
 
     bool HammerViewportManipulatorControllerInstance::HandleInputChannelEvent(const AzFramework::ViewportControllerInputEvent& event)
@@ -169,45 +96,35 @@ namespace Hammer
             if (state == InputChannel::State::Began)
             {
                 m_mouseInteraction.m_mouseButtons.m_mouseButtons |= mouseButtonValue;
-                if (IsDoubleClick(mouseButton))
+
+                const bool isDoubleClick = IsDoubleClick(mouseButton);
+                eventType = isDoubleClick ? MouseEvent::DoubleClick : MouseEvent::Down;
+                if (finishedProcessingEvents)
                 {
-                    if (event.m_priority == InteractionPriority)
+                    if (isDoubleClick)
                     {
                         m_pendingDoubleClicks.erase(mouseButton);
                     }
-                    eventType = MouseEvent::DoubleClick;
-                }
-                else
-                {
-                    if (finishedProcessingEvents)
+                    else
                     {
                         m_pendingDoubleClicks[mouseButton] = { m_currentTime, m_mouseInteraction.m_mousePick.m_screenCoordinates };
                     }
-                    eventType = MouseEvent::Down;
                 }
             }
-            else if (state == InputChannel::State::Ended)
+            else if (state == InputChannel::State::Ended && (m_mouseInteraction.m_mouseButtons.m_mouseButtons & mouseButtonValue))
             {
-                if (m_mouseInteraction.m_mouseButtons.m_mouseButtons & mouseButtonValue)
-                {
-                    if (event.m_priority == InteractionPriority)
-                    {
-                        m_mouseInteraction.m_mouseButtons.m_mouseButtons &= ~mouseButtonValue;
-                    }
-                    eventType = MouseEvent::Up;
-                }
+                m_mouseInteraction.m_mouseButtons.m_mouseButtons &= ~(finishedProcessingEvents ? mouseButtonValue : 0u);
+                eventType = MouseEvent::Up;
             }
         }
         else if (auto keyboardModifier = Helpers::GetKeyboardModifier(event.m_inputChannel); keyboardModifier != KeyboardModifier::None)
         {
-            if (state == InputChannel::State::Began || state == InputChannel::State::Updated)
-            {
-                m_mouseInteraction.m_keyboardModifiers.m_keyModifiers |= static_cast<AZ::u32>(keyboardModifier);
-            }
-            else if (state == InputChannel::State::Ended)
-            {
-                m_mouseInteraction.m_keyboardModifiers.m_keyModifiers &= ~static_cast<AZ::u32>(keyboardModifier);
-            }
+            const AZ::u32 modifierBit = static_cast<AZ::u32>(keyboardModifier);
+            const bool modifierActive = state == InputChannel::State::Began || state == InputChannel::State::Updated;
+            const bool modifierEnded = state == InputChannel::State::Ended;
+            m_mouseInteraction.m_keyboardModifiers.m_keyModifiers =
+                (m_mouseInteraction.m_keyboardModifiers.m_keyModifiers | (modifierActive ? modifierBit : 0u)) &
+                ~(modifierEnded ? modifierBit : 0u);
         }
         else if (event.m_inputChannel.GetInputChannelId() == AzFramework::InputDeviceMouse::Movement::Z)
         {

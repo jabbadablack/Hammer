@@ -20,6 +20,7 @@
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
 
 #include "HammerEditorSystemComponent.h"
+#include "HammerQtWidgetUtils.h"
 #include "HammerViewportLayoutWidget.h"
 
 #include <Hammer/HammerTypeIds.h>
@@ -216,15 +217,7 @@ namespace Hammer
             return;
         }
 
-        QWidget* oldViewport = nullptr;
-        for (QWidget* child : mainWindowWidget->findChildren<QWidget*>())
-        {
-            if (AZStd::string_view(child->metaObject()->className()) == "EditorViewportWidget")
-            {
-                oldViewport = child;
-                break;
-            }
-        }
+        QWidget* oldViewport = FindDescendantByClassName(mainWindowWidget, "EditorViewportWidget");
         AZ_Error("HammerEditorSystemComponent", oldViewport, "Could not find the main EditorViewportWidget");
         if (!oldViewport)
         {

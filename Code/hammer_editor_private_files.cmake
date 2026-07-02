@@ -4,11 +4,20 @@ set(FILES
     Source/Tools/HammerEditorSystemComponent.h
     Source/Tools/HammerViewportLayoutWidget.cpp
     Source/Tools/HammerViewportLayoutWidget.h
+    Source/Tools/HammerHiddenViewportProxy.cpp
+    Source/Tools/HammerHiddenViewportProxy.h
+    Source/Tools/HammerLazyFind.h
     Source/Tools/HammerWidget.cpp
     Source/Tools/HammerWidget.h
     Source/Tools/HammerViewportCameraFactory.cpp
     Source/Tools/HammerViewportCameraFactory.h
     Source/Tools/HammerViewportManipulatorController.cpp
     Source/Tools/HammerViewportManipulatorController.h
+    Source/Tools/HammerEditorViewportSettings.cpp
+    Source/Tools/HammerEditorViewportSettings.h
+    Source/Tools/HammerActiveViewportTracker.cpp
+    Source/Tools/HammerActiveViewportTracker.h
+    Source/Tools/HammerQtWidgetUtils.cpp
+    Source/Tools/HammerQtWidgetUtils.h
     Source/Tools/Hammer.qrc
 )

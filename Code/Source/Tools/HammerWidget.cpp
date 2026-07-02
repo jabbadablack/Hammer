@@ -1,4 +1,5 @@
 #include "HammerWidget.h"
+#include "HammerActiveViewportTracker.h"
 #include "HammerViewportCameraFactory.h"
 #include "HammerViewportManipulatorController.h"
 #include <QEvent>
@@ -91,7 +92,7 @@ namespace Hammer
 
         if (m_active)
         {
-            m_activeViewportTracker->Set(m_viewportWidget->GetId());
+            m_activeViewportTracker->SetActiveViewportId(m_viewportWidget->GetId());
         }
 
         if (AZ::RPI::ViewportContextPtr viewportContext = m_viewportWidget->GetViewportContext())

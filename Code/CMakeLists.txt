@@ -137,6 +137,7 @@ if(PAL_TRAIT_BUILD_HOST_TOOLS)
             PUBLIC
                 AZ::AzToolsFramework
                 ${gem_name}.Private.Object
+                ${gem_name}.Editor.API
                 Gem::AtomToolsFramework.Static
                 AZ::AtomCore
                 Gem::Atom_RPI.Edit
