@@ -57,5 +57,6 @@ namespace Hammer
 
         QPointer<HammerViewportLayoutWidget> m_viewportLayoutWidget;
         QPointer<QDockWidget> m_paneDockWidget;
+        class ViewportSizeFilter* m_viewportFilter = nullptr;
     };
 } // namespace Hammer

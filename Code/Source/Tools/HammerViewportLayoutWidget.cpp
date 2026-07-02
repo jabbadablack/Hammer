@@ -38,7 +38,7 @@ namespace Hammer
         m_gridLayout->setSpacing(0);
         outerLayout->addWidget(m_gridContainer, /*stretch*/ 1);
 
-        SetViewportCount(2);
+        SetViewportCount(4);
     }
 
     void HammerViewportLayoutWidget::SetViewportCount(int count)
@@ -55,10 +55,8 @@ namespace Hammer
         {
             for (int i = 0; i < MaxViewportCount; ++i)
             {
-                // Slot 0 (constructed first, guaranteeing it becomes the default AZ::RPI::
-                // ViewportContext before any others exist) gets its own camera controller; every
-                // other slot mirrors it.
-                HammerWidget* viewport = new HammerWidget(/*isPrimary*/ i == 0, m_gridContainer);
+                // Every slot gets its own independent camera controller.
+                HammerWidget* viewport = new HammerWidget(m_gridContainer);
                 AZ_Assert(viewport, "Failed to allocate HammerWidget #%d", i);
                 m_viewports.push_back(viewport);
             }

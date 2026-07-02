@@ -9,6 +9,12 @@
 #include <QMainWindow>
 #include <QSettings>
 #include <QWidget>
+#include <QCoreApplication>
+#include <QEvent>
+#include <QChildEvent>
+
+#include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
+#include <AzFramework/Windowing/WindowBus.h>
 
 #include "HammerEditorSystemComponent.h"
 #include "HammerViewportLayoutWidget.h"
@@ -21,6 +27,69 @@ namespace Hammer
     {
         constexpr const char* ViewportPaneName = "Hammer Viewport";
     }
+
+    class ViewportSizeFilter : public QObject
+    {
+    public:
+        using QObject::QObject;
+
+    protected:
+        bool eventFilter(QObject* obj, QEvent* event) override
+        {
+            if (obj && obj->isWidgetType())
+            {
+                QWidget* widget = static_cast<QWidget*>(obj);
+                const char* className = widget->metaObject()->className();
+                if (className)
+                {
+                    AZStd::string_view classView(className);
+                    bool isViewport = false;
+
+                    // 1. Check if the widget is a viewport container
+                    if (classView == "EditorViewportWidget" || 
+                        classView == "HammerWidget" || 
+                        classView == "HammerViewportLayoutWidget" ||
+                        classView == "HammerRenderViewportWidget")
+                    {
+                        isViewport = true;
+                    }
+                    // 2. Check if the widget is a RenderViewportWidget (class QWidget under a viewport container)
+                    else if (classView == "QWidget")
+                    {
+                        if (QWidget* parent = widget->parentWidget())
+                        {
+                            const char* parentClassName = parent->metaObject()->className();
+                            if (parentClassName)
+                            {
+                                AZStd::string_view parentClassView(parentClassName);
+                                if (parentClassView == "EditorViewportWidget" || 
+                                    parentClassView == "HammerWidget" || 
+                                    parentClassView == "HammerViewportLayoutWidget")
+                                {
+                                    isViewport = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if (isViewport)
+                    {
+                        // Unconditionally enforce at least 32x32 size limits to prevent 0-sized render targets and buffers
+                        if (widget->minimumWidth() < 32 || widget->minimumHeight() < 32)
+                        {
+                            widget->setMinimumSize(32, 32);
+                        }
+                        if (widget->width() < 32 || widget->height() < 32)
+                        {
+                            widget->resize(32, 32);
+                        }
+                    }
+                }
+            }
+
+            return QObject::eventFilter(obj, event);
+        }
+    };
 
     AZ_COMPONENT_IMPL(HammerEditorSystemComponent, "HammerEditorSystemComponent",
         HammerEditorSystemComponentTypeId, BaseSystemComponent);
@@ -87,6 +156,16 @@ namespace Hammer
 
     void HammerEditorSystemComponent::Deactivate()
     {
+        if (m_viewportFilter)
+        {
+            if (qApp)
+            {
+                qApp->removeEventFilter(m_viewportFilter);
+            }
+            delete m_viewportFilter;
+            m_viewportFilter = nullptr;
+        }
+
         // EmbedViewportInCenter() pulled m_viewportLayoutWidget out of m_paneDockWidget to use as
         // the Editor's central widget directly; give it back before closing the pane through
         // QtViewPaneManager, since QtViewPane::CloseInstance() sends a QCloseEvent to
@@ -119,6 +198,12 @@ namespace Hammer
 
     void HammerEditorSystemComponent::NotifyEditorInitialized()
     {
+        if (qApp)
+        {
+            m_viewportFilter = new ViewportSizeFilter(qApp);
+            qApp->installEventFilter(m_viewportFilter);
+        }
+
         EmbedViewportInCenter();
     }
 
@@ -187,6 +272,18 @@ namespace Hammer
             return;
         }
 
+        // Captured before the central-widget swap below: this is the actual widget
+        // viewPaneHost->setCentralWidget() will detach (CLayoutWnd, hosting oldViewport), not
+        // oldViewport itself. Qt's setCentralWidget() does not delete the outgoing central widget -
+        // it only hides it and drops it from the QMainWindowLayout, leaving it alive as an orphaned
+        // child of viewPaneHost. Left in that state, it kept receiving queued Qt metacalls (visible
+        // in Editor.log as a callstack through EditorViewportWidget's private slot into
+        // ReflectionScreenSpaceTracePass::BuildInternal) that rebuilt its Atom render pipeline
+        // against invalid/stale geometry and crashed on a null AttachmentImage. Fully unparenting it
+        // (not just hiding it) removes it from viewPaneHost's widget tree entirely so it stops
+        // receiving those events.
+        QWidget* oldCentralWidget = viewPaneHost->centralWidget();
+
         m_paneDockWidget = AzToolsFramework::InstanceViewPane(ViewportPaneName);
         AZ_Error("HammerEditorSystemComponent", m_paneDockWidget, "Could not instance the '%s' view pane", ViewportPaneName);
         if (!m_paneDockWidget)
@@ -219,10 +316,22 @@ namespace Hammer
         m_paneDockWidget->hide();
         m_paneDockWidget->setWidget(nullptr);
 
-        // Deletes the old CLayoutWnd (and the EditorViewportWidget inside it) as a side effect of
-        // becoming the new central widget.
         viewPaneHost->setCentralWidget(content);
         content->show();
+
+        // See the comment above where oldCentralWidget was captured: setCentralWidget() only hides
+        // and unparents-from-the-layout the previous central widget, it does not delete or fully
+        // detach it. Explicitly unparenting it here (rather than leaving it as a hidden child of
+        // viewPaneHost) stops it from continuing to receive Qt events/queued metacalls that were
+        // driving it to rebuild its render pipeline in a bad state. Not deleted outright: destroying
+        // its Atom render pipeline here risks the already-diagnosed ~ViewportContext ->
+        // Scene::RemoveRenderPipeline pass-tree-rebuild crash from tearing one pipeline down while
+        // Hammer's own are still being brought up.
+        if (oldCentralWidget && oldCentralWidget != content)
+        {
+            oldCentralWidget->hide();
+            oldCentralWidget->setParent(nullptr);
+        }
     }
 
 } // namespace Hammer

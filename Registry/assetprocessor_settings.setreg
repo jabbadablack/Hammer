@@ -5,12 +5,12 @@
                 "ScanFolder Hammer/Assets": {
                     "watch": "@GEMROOT:Hammer@/Assets",
                     "recursive": 1,
-                    "order": 101
+                    "order": 5
                 },
                 "ScanFolder Hammer/Registry": {
                     "watch": "@GEMROOT:Hammer@/Registry",
                     "recursive": 1,
-                    "order": 102
+                    "order": 6
                 }
             }
         }

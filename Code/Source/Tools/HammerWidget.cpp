@@ -2,8 +2,6 @@
 #include "HammerViewportCameraFactory.h"
 #include "HammerViewportManipulatorController.h"
 #include <QVBoxLayout>
-#include <Atom/RPI.Public/ViewportContext.h>
-#include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 #include <AzFramework/Scene/Scene.h>
 #include <AzFramework/Scene/SceneSystemInterface.h>
@@ -11,20 +9,41 @@
 
 namespace Hammer
 {
-    HammerWidget::HammerWidget(bool isPrimary, QWidget* parent)
+    class HammerRenderViewportWidget : public AtomToolsFramework::RenderViewportWidget
+    {
+    public:
+        using RenderViewportWidget::RenderViewportWidget;
+
+        AzFramework::WindowSize GetClientAreaSize() const override
+        {
+            AzFramework::WindowSize size = RenderViewportWidget::GetClientAreaSize();
+            size.m_width = AZStd::max(size.m_width, 32u);
+            size.m_height = AZStd::max(size.m_height, 32u);
+            return size;
+        }
+
+        AzFramework::WindowSize GetRenderResolution() const override
+        {
+            AzFramework::WindowSize size = RenderViewportWidget::GetRenderResolution();
+            size.m_width = AZStd::max(size.m_width, 32u);
+            size.m_height = AZStd::max(size.m_height, 32u);
+            return size;
+        }
+    };
+
+    HammerWidget::HammerWidget(QWidget* parent)
         : QWidget(parent)
-        , m_isPrimary(isPrimary)
     {
         QVBoxLayout* mainLayout = new QVBoxLayout(this);
-        AtomToolsFramework::RenderViewportWidget* viewport1 = new AtomToolsFramework::RenderViewportWidget(this);
-        AZ_Assert(viewport1, "Failed to allocate RenderViewportWidget");
-        viewport1->InitializeViewportContext();
+        mainLayout->setContentsMargins(0, 0, 0, 0);
+        mainLayout->setSpacing(0);
+
+        HammerRenderViewportWidget* viewport1 = new HammerRenderViewportWidget(this, false);
+        AZ_Assert(viewport1, "Failed to allocate HammerRenderViewportWidget");
         m_viewportWidget = viewport1;
 
         mainLayout->addWidget(viewport1);
         setLayout(mainLayout);
-
-        InitializeSceneIfReady();
     }
 
     void HammerWidget::resizeEvent(QResizeEvent* event)
@@ -41,10 +60,12 @@ namespace Hammer
 
     void HammerWidget::InitializeSceneIfReady()
     {
-        if (m_sceneInitialized || !m_viewportWidget || m_viewportWidget->width() <= 0 || m_viewportWidget->height() <= 0)
+        if (m_sceneInitialized || !m_viewportWidget || m_viewportWidget->width() < 1 || m_viewportWidget->height() < 1)
         {
             return;
         }
+
+        m_viewportWidget->InitializeViewportContext();
         m_sceneInitialized = true;
 
         AzFramework::ISceneSystem* sceneSystem = AzFramework::SceneSystemInterface::Get();
@@ -59,49 +80,9 @@ namespace Hammer
             }
         }
 
-        if (m_isPrimary)
-        {
-            // Own camera controller, matching the default Editor viewport's feel. Being the first
-            // RenderViewportWidget constructed (HammerViewportLayoutWidget always builds slot 0
-            // first), this also naturally becomes the default AZ::RPI::ViewportContext that any
-            // non-primary HammerWidget instances below will mirror.
-            m_viewportWidget->GetControllerList()->Add(CreateViewportCameraController(m_viewportWidget->GetId()));
-        }
-        else
-        {
-            // No camera input of our own: mirror the Editor's default viewport camera every time
-            // it changes, since the primary Hammer viewport already handles navigation. Looked up
-            // by interface (not by widget) so this doesn't need a direct reference to the primary
-            // widget.
-            auto* viewportContextInterface = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
-            AZ_Error("HammerWidget", viewportContextInterface, "AZ::RPI::ViewportContextRequestsInterface is not available");
-
-            AZ::RPI::ViewportContextPtr sourceContext =
-                viewportContextInterface ? viewportContextInterface->GetDefaultViewportContext() : nullptr;
-            AZ::RPI::ViewportContextPtr targetContext = m_viewportWidget->GetViewportContext();
-            AZ_Assert(targetContext, "HammerWidget's own RenderViewportWidget has no ViewportContext after InitializeViewportContext()");
-
-            if (sourceContext && targetContext)
-            {
-                targetContext->SetCameraTransform(sourceContext->GetCameraTransform());
-
-                m_cameraTransformChangedHandler = AZ::RPI::MatrixChangedEvent::Handler(
-                    [sourceContext, targetContext]([[maybe_unused]] const AZ::Matrix4x4& matrix)
-                    {
-                        targetContext->SetCameraTransform(sourceContext->GetCameraTransform());
-                    });
-                sourceContext->ConnectViewMatrixChangedHandler(m_cameraTransformChangedHandler);
-            }
-            else
-            {
-                // No default viewport context to mirror (unexpected, but recoverable): fall back
-                // to giving this viewport its own camera controller so it isn't left unusable.
-                AZ_Error(
-                    "HammerWidget", false, "No default viewport context to mirror; falling back to an independent camera controller");
-                m_viewportWidget->GetControllerList()->Add(CreateViewportCameraController(m_viewportWidget->GetId()));
-            }
-        }
-
+        // Every viewport gets its own independent camera controller, matching the default Editor
+        // viewport's feel.
+        m_viewportWidget->GetControllerList()->Add(CreateViewportCameraController(m_viewportWidget->GetId()));
         m_viewportWidget->GetControllerList()->Add(AZStd::make_shared<HammerViewportManipulatorController>());
     }
 }
