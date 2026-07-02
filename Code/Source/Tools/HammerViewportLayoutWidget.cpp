@@ -88,10 +88,23 @@ namespace Hammer
                     viewport, &HammerWidget::ViewportFocusRequested, this,
                     [this, viewport]
                     {
+                        // Deactivating every sibling BEFORE activating the target matters, not just
+                        // as a style choice: HammerWidget::ApplyActiveState() claims the shared
+                        // "Default ViewportContext" name on activation and releases it on
+                        // deactivation. A single combined loop (SetActive(sibling == viewport) for
+                        // each, in m_viewports' fixed index order) would activate the target before
+                        // deactivating the old active one whenever the target's index is lower - the
+                        // claim would then fail (the name's still held) and assert, reproducibly
+                        // whenever switching to an earlier-indexed viewport while a later-indexed one
+                        // was active.
                         for (HammerWidget* sibling : m_viewports)
                         {
-                            sibling->SetActive(sibling == viewport);
+                            if (sibling != viewport)
+                            {
+                                sibling->SetActive(false);
+                            }
                         }
+                        viewport->SetActive(true);
                         m_activeViewport = viewport;
                     });
             }
