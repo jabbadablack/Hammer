@@ -4,6 +4,9 @@
 
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
 #include <AzToolsFramework/API/ViewPaneOptions.h>
+#include <AzToolsFramework/ActionManager/Action/ActionManagerInterface.h>
+#include <AzToolsFramework/ActionManager/HotKey/HotKeyManagerInterface.h>
+#include <AzToolsFramework/Editor/ActionManagerIdentifiers/EditorContextIdentifiers.h>
 
 #include <QDockWidget>
 #include <QIcon>
@@ -137,6 +140,7 @@ namespace Hammer
     {
         HammerSystemComponent::Activate();
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
+        AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusConnect();
 
         QSettings settings("O3DE", "O3DE");
         constexpr const char* MigratedStaleLayoutKey = "HammerGem/migratedStaleLayoutOnce";
@@ -178,6 +182,7 @@ namespace Hammer
         m_paneDockWidget = nullptr;
         m_viewportLayoutWidget = nullptr;
 
+        AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusDisconnect();
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
         HammerSystemComponent::Deactivate();
     }
@@ -197,6 +202,67 @@ namespace Hammer
 
         EmbedViewportInCenter();
         CreateViewportCountButtons();
+    }
+
+    void HammerEditorSystemComponent::OnActionRegistrationHook()
+    {
+        auto* actionManagerInterface = AZ::Interface<AzToolsFramework::ActionManagerInterface>::Get();
+        auto* hotKeyManagerInterface = AZ::Interface<AzToolsFramework::HotKeyManagerInterface>::Get();
+        AZ_Error("HammerEditorSystemComponent", actionManagerInterface, "Could not find AzToolsFramework::ActionManagerInterface");
+        AZ_Error("HammerEditorSystemComponent", hotKeyManagerInterface, "Could not find AzToolsFramework::HotKeyManagerInterface");
+        if (!actionManagerInterface || !hotKeyManagerInterface)
+        {
+            return;
+        }
+
+        struct HotkeyDef
+        {
+            const char* m_id;
+            const char* m_name;
+            const char* m_hotkey;
+            int m_count;
+        };
+        constexpr HotkeyDef layoutHotkeys[] = {
+            { "o3de.action.hammer.viewportLayoutSingle", "Single Viewport", "Ctrl+1", 1 },
+            { "o3de.action.hammer.viewportLayoutDual", "Dual Viewport", "Ctrl+2", 2 },
+            { "o3de.action.hammer.viewportLayoutQuad", "Quad Viewport", "Ctrl+3", 4 },
+        };
+
+        for (const HotkeyDef& def : layoutHotkeys)
+        {
+            AzToolsFramework::ActionProperties actionProperties;
+            actionProperties.m_name = def.m_name;
+            actionProperties.m_description = AZStd::string::format("Switch Hammer to the %s layout", def.m_name);
+            actionProperties.m_category = "Viewport";
+
+            actionManagerInterface->RegisterAction(
+                EditorIdentifiers::MainWindowActionContextIdentifier, def.m_id, actionProperties,
+                [this, count = def.m_count]
+                {
+                    if (m_viewportLayoutWidget)
+                    {
+                        m_viewportLayoutWidget->SetViewportCount(count);
+                    }
+                });
+            hotKeyManagerInterface->SetActionHotKey(def.m_id, def.m_hotkey);
+        }
+
+        constexpr AZStd::string_view maximizeId = "o3de.action.hammer.viewportToggleMaximize";
+        AzToolsFramework::ActionProperties maximizeProperties;
+        maximizeProperties.m_name = "Toggle Maximize Viewport";
+        maximizeProperties.m_description = "Maximize or restore the currently active Hammer viewport";
+        maximizeProperties.m_category = "Viewport";
+
+        actionManagerInterface->RegisterAction(
+            EditorIdentifiers::MainWindowActionContextIdentifier, maximizeId, maximizeProperties,
+            [this]
+            {
+                if (m_viewportLayoutWidget)
+                {
+                    m_viewportLayoutWidget->ToggleMaximizeActiveViewport();
+                }
+            });
+        hotKeyManagerInterface->SetActionHotKey(maximizeId, "Ctrl+4");
     }
 
     void HammerEditorSystemComponent::RegisterViewportPane()

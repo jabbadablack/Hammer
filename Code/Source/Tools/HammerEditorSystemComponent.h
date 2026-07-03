@@ -4,6 +4,7 @@
 #include <Clients/HammerSystemComponent.h>
 
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
+#include <AzToolsFramework/ActionManager/ActionManagerRegistrationNotificationBus.h>
 
 #include <AzCore/std/containers/vector.h>
 
@@ -20,6 +21,7 @@ namespace Hammer
     class HammerEditorSystemComponent
         : public HammerSystemComponent
         , protected AzToolsFramework::EditorEvents::Bus::Handler
+        , protected AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler
     {
         using BaseSystemComponent = HammerSystemComponent;
     public:
@@ -41,6 +43,8 @@ namespace Hammer
 
         void NotifyRegisterViews() override;
         void NotifyEditorInitialized() override;
+
+        void OnActionRegistrationHook() override;
 
         void RegisterViewportPane();
         void EmbedViewportInCenter();

@@ -4,6 +4,8 @@
 #include "HammerWidget.h"
 
 #include <AzCore/std/algorithm.h>
+#include <AzFramework/Viewport/ViewportId.h>
+#include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 
 #include <QGridLayout>
 #include <QVBoxLayout>
@@ -33,6 +35,11 @@ namespace Hammer
     void HammerViewportLayoutWidget::SetViewportCount(int count)
     {
         count = AZStd::clamp(count, MinViewportCount, MaxViewportCount);
+
+        if (count != 1)
+        {
+            RestoreMaximizeSwap();
+        }
 
         if (m_viewports.empty())
         {
@@ -81,11 +88,67 @@ namespace Hammer
             m_viewports[i]->SetRenderTickEnabled(true);
         }
 
+        m_currentViewportCount = count;
         emit ViewportCountChanged(count);
     }
 
     void HammerViewportLayoutWidget::SetHiddenRealViewport(QWidget* realViewport)
     {
         m_hiddenViewportProxy->SetHiddenRealViewport(realViewport);
+    }
+
+    void HammerViewportLayoutWidget::RestoreMaximizeSwap()
+    {
+        if (!m_isMaximized)
+        {
+            return;
+        }
+
+        if (m_maximizedFromIndex > 0 && m_maximizedFromIndex < static_cast<int>(m_viewports.size()))
+        {
+            AZStd::swap(m_viewports[0], m_viewports[m_maximizedFromIndex]);
+        }
+        m_maximizedFromIndex = -1;
+        m_isMaximized = false;
+    }
+
+    void HammerViewportLayoutWidget::ToggleMaximizeActiveViewport()
+    {
+        if (m_isMaximized)
+        {
+            const int restoreCount = m_preMaximizeViewportCount;
+            RestoreMaximizeSwap();
+            SetViewportCount(restoreCount);
+            return;
+        }
+
+        if (m_viewports.empty())
+        {
+            return;
+        }
+
+        int activeIndex = 0;
+        if (m_activeViewportTracker)
+        {
+            const AzFramework::ViewportId activeId = m_activeViewportTracker->GetActiveViewportId();
+            for (int i = 0; i < static_cast<int>(m_viewports.size()); ++i)
+            {
+                if (m_viewports[i]->GetViewportWidget() && m_viewports[i]->GetViewportWidget()->GetId() == activeId)
+                {
+                    activeIndex = i;
+                    break;
+                }
+            }
+        }
+
+        m_preMaximizeViewportCount = m_currentViewportCount;
+        m_maximizedFromIndex = activeIndex > 0 ? activeIndex : -1;
+        m_isMaximized = true;
+        if (activeIndex > 0)
+        {
+            AZStd::swap(m_viewports[0], m_viewports[activeIndex]);
+        }
+
+        SetViewportCount(1);
     }
 } // namespace Hammer
