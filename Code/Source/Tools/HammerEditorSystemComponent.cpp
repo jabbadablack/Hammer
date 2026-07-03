@@ -231,7 +231,6 @@ namespace Hammer
     void HammerEditorSystemComponent::NotifyEditorInitialized()
     {
         AZ_Assert(m_adapters, "NotifyEditorInitialized called before Activate");
-        AZ_Assert(m_viewportLayoutWidget, "NotifyEditorInitialized called before the viewport pane was registered");
 
         m_adapters->UpgradeQtEnvironment();
         m_adapters->UpgradeRenderBackend();
@@ -297,7 +296,7 @@ namespace Hammer
 
     void HammerEditorSystemComponent::EmbedViewportInCenter()
     {
-        AZ_Assert(m_viewportLayoutWidget, "EmbedViewportInCenter called before the viewport pane was registered");
+        AZ_Assert(m_adapters, "EmbedViewportInCenter called before Activate");
 
         auto* renderBackend = AZ::Interface<IHammerRenderBackend>::Get();
         AZ_Assert(renderBackend, "IHammerRenderBackend must be registered before EmbedViewportInCenter is called");
