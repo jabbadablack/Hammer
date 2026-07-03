@@ -4,6 +4,7 @@
 #include <QWidget>
 #endif
 
+#include <AzCore/std/containers/array.h>
 #include <AzCore/std/containers/vector.h>
 #include <AzCore/std/optional.h>
 #include <AzCore/std/smart_ptr/shared_ptr.h>
@@ -39,12 +40,15 @@ namespace Hammer
         void MaximizeActiveViewport();
         void RestoreFromMaximize();
         void ActivateViewport(HammerWidget* viewport);
+        void ReconcileGridSlots(int shownCount, int columns);
 
         QGridLayout* m_gridLayout = nullptr;
         QWidget* m_gridContainer = nullptr;
         AZStd::vector<HammerWidget*> m_viewports;
         AZStd::shared_ptr<ActiveViewportTracker> m_activeViewportTracker;
         HammerHiddenViewportProxy* m_hiddenViewportProxy = nullptr;
+        HammerWidget* m_activeViewport = nullptr;
+        AZStd::array<HammerWidget*, MaxViewportCount> m_gridSlotWidget = {};
         AZStd::optional<int> m_maximizedFromIndex;
         int m_preMaximizeViewportCount = MinViewportCount;
         int m_currentViewportCount = MinViewportCount;
