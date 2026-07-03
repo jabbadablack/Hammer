@@ -9,6 +9,7 @@
 #include <QEvent>
 #include <QVBoxLayout>
 
+#include <Atom/RHI/RHISystemInterface.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 #include <AzFramework/Scene/Scene.h>
 #include <AzFramework/Scene/SceneSystemInterface.h>
@@ -31,6 +32,17 @@ namespace Hammer
 
         mainLayout->addWidget(m_viewportWidget);
         setLayout(mainLayout);
+    }
+
+    HammerWidget::~HammerWidget()
+    {
+        const bool neverInitialized = !m_sceneInitialized && m_viewportWidget;
+        AZ_Warning(
+            "HammerWidget", !neverInitialized || AZ::RHI::RHISystemInterface::Get(),
+            "A Hammer viewport was destroyed before ever being shown, and the RHI system has already shut down; skipping "
+            "deferred initialization (a known AtomToolsFramework::RenderViewportWidget shutdown issue may occur)");
+
+        (neverInitialized && AZ::RHI::RHISystemInterface::Get()) && (m_viewportWidget->InitializeViewportContext(), true);
     }
 
     void HammerWidget::resizeEvent(QResizeEvent* event)

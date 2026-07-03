@@ -22,7 +22,7 @@ namespace Hammer
     Q_OBJECT
     public:
         explicit HammerWidget(QWidget* parent);
-        ~HammerWidget() override = default;
+        ~HammerWidget() override;
 
         AtomToolsFramework::RenderViewportWidget* GetViewportWidget() const
         {
