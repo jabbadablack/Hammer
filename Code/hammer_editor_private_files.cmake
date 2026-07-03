@@ -4,20 +4,36 @@ set(FILES
     Source/Tools/HammerEditorSystemComponent.h
     Source/Tools/HammerViewportLayoutWidget.cpp
     Source/Tools/HammerViewportLayoutWidget.h
+    Source/Tools/HammerViewportLayoutHandle.cpp
+    Source/Tools/HammerViewportLayoutHandle.h
     Source/Tools/HammerHiddenViewportProxy.cpp
     Source/Tools/HammerHiddenViewportProxy.h
     Source/Tools/HammerLazyFind.h
     Source/Tools/HammerWidget.cpp
     Source/Tools/HammerWidget.h
-    Source/Tools/HammerViewportCameraFactory.cpp
-    Source/Tools/HammerViewportCameraFactory.h
     Source/Tools/HammerViewportManipulatorController.cpp
     Source/Tools/HammerViewportManipulatorController.h
     Source/Tools/HammerEditorViewportSettings.cpp
     Source/Tools/HammerEditorViewportSettings.h
     Source/Tools/HammerActiveViewportTracker.cpp
     Source/Tools/HammerActiveViewportTracker.h
-    Source/Tools/HammerQtWidgetUtils.cpp
-    Source/Tools/HammerQtWidgetUtils.h
+    Source/Tools/HammerNames.h
+    Source/Tools/HammerOptionalUtils.h
+    Source/Tools/Adapters/HammerAzEditorShellAdapter.cpp
+    Source/Tools/Adapters/HammerAzEditorShellAdapter.h
+    Source/Tools/Adapters/HammerNullEditorShell.h
+    Source/Tools/Adapters/HammerAtomRenderBackendAdapter.cpp
+    Source/Tools/Adapters/HammerAtomRenderBackendAdapter.h
+    Source/Tools/Adapters/HammerNullRenderBackend.h
+    Source/Tools/Adapters/HammerRenderViewportWidget.cpp
+    Source/Tools/Adapters/HammerRenderViewportWidget.h
+    Source/Tools/Adapters/HammerViewportCameraFactory.cpp
+    Source/Tools/Adapters/HammerViewportCameraFactory.h
+    Source/Tools/Adapters/HammerQtEnvironmentAdapter.cpp
+    Source/Tools/Adapters/HammerQtEnvironmentAdapter.h
+    Source/Tools/Adapters/HammerNullQtEnvironment.h
+    Source/Tools/Adapters/HammerAzSettingsRegistryAdapter.cpp
+    Source/Tools/Adapters/HammerAzSettingsRegistryAdapter.h
+    Source/Tools/Adapters/HammerNullSettingsProvider.h
     Source/Tools/Hammer.qrc
 )

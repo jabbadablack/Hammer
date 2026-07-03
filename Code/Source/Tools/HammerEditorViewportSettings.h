@@ -1,18 +1,15 @@
 #pragma once
 
-#include <AzCore/std/smart_ptr/shared_ptr.h>
 #include <AzFramework/Viewport/ViewportId.h>
 #include <AzToolsFramework/Viewport/ViewportMessages.h>
 
 namespace Hammer
 {
-    class ActiveViewportTracker;
-
     class HammerEditorViewportSettings final
         : public AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler
     {
     public:
-        HammerEditorViewportSettings(AzFramework::ViewportId viewport, AZStd::shared_ptr<ActiveViewportTracker> activeViewportTracker);
+        explicit HammerEditorViewportSettings(AzFramework::ViewportId viewport);
         ~HammerEditorViewportSettings() override;
 
         bool GridSnappingEnabled() const override;
@@ -31,6 +28,5 @@ namespace Hammer
 
     private:
         AzFramework::ViewportId m_viewportId;
-        AZStd::shared_ptr<ActiveViewportTracker> m_activeViewportTracker;
     };
 }

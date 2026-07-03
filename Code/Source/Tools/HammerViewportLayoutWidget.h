@@ -1,4 +1,3 @@
-
 #pragma once
 
 #if !defined(Q_MOC_RUN)
@@ -6,6 +5,7 @@
 #endif
 
 #include <AzCore/std/containers/vector.h>
+#include <AzCore/std/optional.h>
 #include <AzCore/std/smart_ptr/shared_ptr.h>
 
 class QGridLayout;
@@ -27,7 +27,7 @@ namespace Hammer
         explicit HammerViewportLayoutWidget(QWidget* parent = nullptr);
         ~HammerViewportLayoutWidget() override = default;
 
-        void SetHiddenRealViewport(QWidget* realViewport);
+        void SetHiddenRealViewport(QWidget& realViewport);
         void SetViewportCount(int count);
         void ToggleMaximizeActiveViewport();
 
@@ -36,14 +36,16 @@ namespace Hammer
 
     private:
         void RestoreMaximizeSwap();
+        void MaximizeActiveViewport();
+        void RestoreFromMaximize();
+        void ActivateViewport(HammerWidget* viewport);
 
         QGridLayout* m_gridLayout = nullptr;
         QWidget* m_gridContainer = nullptr;
         AZStd::vector<HammerWidget*> m_viewports;
         AZStd::shared_ptr<ActiveViewportTracker> m_activeViewportTracker;
         HammerHiddenViewportProxy* m_hiddenViewportProxy = nullptr;
-        bool m_isMaximized = false;
-        int m_maximizedFromIndex = -1;
+        AZStd::optional<int> m_maximizedFromIndex;
         int m_preMaximizeViewportCount = MinViewportCount;
         int m_currentViewportCount = MinViewportCount;
     };

@@ -10,7 +10,9 @@ namespace Hammer
     public:
         T* Get(const AZStd::function<T*()>& finder)
         {
-            return m_value = m_value ? m_value : finder();
+            AZ_Assert(finder, "LazyFind::Get called with an empty finder");
+            m_value || (m_value = finder(), true);
+            return m_value;
         }
 
         T* Peek() const

@@ -1,113 +1,159 @@
+#include "HammerEditorSystemComponent.h"
+#include "HammerViewportLayoutWidget.h"
 
+#include "HammerNames.h"
+
+#include "Adapters/HammerAtomRenderBackendAdapter.h"
+#include "Adapters/HammerAzEditorShellAdapter.h"
+#include "Adapters/HammerAzSettingsRegistryAdapter.h"
+#include "Adapters/HammerNullEditorShell.h"
+#include "Adapters/HammerNullQtEnvironment.h"
+#include "Adapters/HammerNullRenderBackend.h"
+#include "Adapters/HammerNullSettingsProvider.h"
+#include "Adapters/HammerQtEnvironmentAdapter.h"
+
+#include <AzCore/Interface/Interface.h>
 #include <AzCore/Serialization/SerializeContext.h>
-#include <AzCore/std/string/string_view.h>
+#include <AzCore/std/containers/array.h>
 
-#include <AzToolsFramework/API/ToolsApplicationAPI.h>
-#include <AzToolsFramework/API/ViewPaneOptions.h>
-#include <AzToolsFramework/ActionManager/Action/ActionManagerInterface.h>
-#include <AzToolsFramework/ActionManager/HotKey/HotKeyManagerInterface.h>
-#include <AzToolsFramework/Editor/ActionManagerIdentifiers/EditorContextIdentifiers.h>
+#include <Atom/RPI.Public/ViewportContextBus.h>
 
-#include <QDockWidget>
 #include <QIcon>
-#include <QMainWindow>
-#include <QSettings>
 #include <QStatusBar>
 #include <QToolButton>
 #include <QWidget>
-#include <QCoreApplication>
-#include <QEvent>
-#include <QChildEvent>
-
-#include <Atom/RPI.Public/ViewportContext.h>
-#include <Atom/RPI.Public/ViewportContextBus.h>
-#include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
-#include <AzFramework/Windowing/WindowBus.h>
-#include <AzToolsFramework/Viewport/ViewportSettings.h>
-
-#include "HammerEditorSystemComponent.h"
-#include "HammerQtWidgetUtils.h"
-#include "HammerViewportLayoutWidget.h"
 
 #include <Hammer/HammerTypeIds.h>
 
 namespace Hammer
 {
-    namespace
-    {
-        constexpr const char* ViewportPaneName = "Hammer Viewport";
-    }
-
-    class ViewportSizeFilter : public QObject
+    class HammerAdapterRegistry
     {
     public:
-        using QObject::QObject;
-
-    protected:
-        bool eventFilter(QObject* obj, QEvent* event) override
+        void RegisterNullAdapters()
         {
-            if (obj && obj->isWidgetType())
-            {
-                QWidget* widget = static_cast<QWidget*>(obj);
-                const char* className = widget->metaObject()->className();
-                if (className)
-                {
-                    AZStd::string_view classView(className);
-                    bool isViewport = false;
+            AZ_Assert(!m_registeredEditorShell, "RegisterNullAdapters called more than once");
+            AZ_Assert(!AZ::Interface<IHammerEditorShell>::Get(), "IHammerEditorShell is already registered by another instance");
 
-                    if (classView == "EditorViewportWidget" ||
-                        classView == "HammerWidget" ||
-                        classView == "HammerViewportLayoutWidget" ||
-                        classView == "HammerRenderViewportWidget")
-                    {
-                        isViewport = true;
-                    }
-                    else if (classView == "QWidget")
-                    {
-                        if (QWidget* parent = widget->parentWidget())
-                        {
-                            const char* parentClassName = parent->metaObject()->className();
-                            if (parentClassName)
-                            {
-                                AZStd::string_view parentClassView(parentClassName);
-                                if (parentClassView == "EditorViewportWidget" ||
-                                    parentClassView == "HammerWidget" ||
-                                    parentClassView == "HammerViewportLayoutWidget")
-                                {
-                                    isViewport = true;
-                                }
-                            }
-                        }
-                    }
+            m_registeredEditorShell = &m_nullEditorShell;
+            m_registeredRenderBackend = &m_nullRenderBackend;
+            m_registeredQtEnvironment = &m_nullQtEnvironment;
+            m_registeredSettingsProvider = &m_nullSettingsProvider;
 
-                    if (isViewport)
-                    {
-                        if (widget->minimumWidth() < 32 || widget->minimumHeight() < 32)
-                        {
-                            widget->setMinimumSize(32, 32);
-                        }
-                        if (widget->width() < 32 || widget->height() < 32)
-                        {
-                            widget->resize(32, 32);
-                        }
-                    }
-                }
-            }
-
-            return QObject::eventFilter(obj, event);
+            AZ::Interface<IHammerEditorShell>::Register(m_registeredEditorShell);
+            AZ::Interface<IHammerRenderBackend>::Register(m_registeredRenderBackend);
+            AZ::Interface<IHammerQtEnvironment>::Register(m_registeredQtEnvironment);
+            AZ::Interface<IHammerSettingsProvider>::Register(m_registeredSettingsProvider);
         }
+
+        void UpgradeSettingsProvider()
+        {
+            AZ_Assert(m_registeredSettingsProvider, "UpgradeSettingsProvider called before RegisterNullAdapters");
+
+            m_realSettingsProvider = AZStd::make_unique<HammerAzSettingsRegistryAdapter>();
+            AZ_Assert(m_realSettingsProvider, "Failed to allocate HammerAzSettingsRegistryAdapter");
+            AZ::Interface<IHammerSettingsProvider>::Unregister(m_registeredSettingsProvider);
+            m_registeredSettingsProvider = m_realSettingsProvider.get();
+            AZ::Interface<IHammerSettingsProvider>::Register(m_registeredSettingsProvider);
+            AZ_Assert(
+                AZ::Interface<IHammerSettingsProvider>::Get() == m_registeredSettingsProvider,
+                "IHammerSettingsProvider was not upgraded to the real adapter");
+        }
+
+        void UpgradeQtEnvironment()
+        {
+            AZ_Assert(m_registeredQtEnvironment, "UpgradeQtEnvironment called before RegisterNullAdapters");
+
+            m_realQtEnvironment = AZStd::make_unique<HammerQtEnvironmentAdapter>();
+            AZ_Assert(m_realQtEnvironment, "Failed to allocate HammerQtEnvironmentAdapter");
+            AZ::Interface<IHammerQtEnvironment>::Unregister(m_registeredQtEnvironment);
+            m_registeredQtEnvironment = m_realQtEnvironment.get();
+            AZ::Interface<IHammerQtEnvironment>::Register(m_registeredQtEnvironment);
+            m_realQtEnvironment->InstallMinimumSizeGuard();
+        }
+
+        void UpgradeRenderBackend()
+        {
+            AZ_Assert(m_registeredRenderBackend, "UpgradeRenderBackend called before RegisterNullAdapters");
+
+            auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
+            AZ_Error("HammerEditorSystemComponent", viewportContextManager, "Could not find AZ::RPI::ViewportContextRequestsInterface");
+
+            viewportContextManager &&
+                (m_realRenderBackend = AZStd::make_unique<HammerAtomRenderBackendAdapter>(*viewportContextManager),
+                 AZ::Interface<IHammerRenderBackend>::Unregister(m_registeredRenderBackend),
+                 (m_registeredRenderBackend = m_realRenderBackend.get()),
+                 AZ::Interface<IHammerRenderBackend>::Register(m_registeredRenderBackend), true);
+
+            AZ_Warning(
+                "HammerEditorSystemComponent", m_realRenderBackend, "IHammerRenderBackend remains the Null Object implementation");
+        }
+
+        void UpgradeEditorShell()
+        {
+            AZ_Assert(m_registeredEditorShell, "UpgradeEditorShell called before RegisterNullAdapters");
+
+            m_realEditorShell = AZStd::make_unique<HammerAzEditorShellAdapter>();
+            AZ_Assert(m_realEditorShell, "Failed to allocate HammerAzEditorShellAdapter");
+            AZ::Interface<IHammerEditorShell>::Unregister(m_registeredEditorShell);
+            m_registeredEditorShell = m_realEditorShell.get();
+            AZ::Interface<IHammerEditorShell>::Register(m_registeredEditorShell);
+        }
+
+        void Shutdown()
+        {
+            AZ_Assert(m_registeredEditorShell, "Shutdown called before RegisterNullAdapters");
+            AZ_Assert(m_registeredSettingsProvider, "Shutdown called before RegisterNullAdapters");
+
+            m_realQtEnvironment && (m_realQtEnvironment->RemoveMinimumSizeGuard(), true);
+
+            AZ::Interface<IHammerEditorShell>::Unregister(m_registeredEditorShell);
+            AZ::Interface<IHammerRenderBackend>::Unregister(m_registeredRenderBackend);
+            AZ::Interface<IHammerQtEnvironment>::Unregister(m_registeredQtEnvironment);
+            AZ::Interface<IHammerSettingsProvider>::Unregister(m_registeredSettingsProvider);
+        }
+
+    private:
+        HammerNullEditorShell m_nullEditorShell;
+        HammerNullRenderBackend m_nullRenderBackend;
+        HammerNullQtEnvironment m_nullQtEnvironment;
+        HammerNullSettingsProvider m_nullSettingsProvider;
+
+        AZStd::unique_ptr<HammerAzEditorShellAdapter> m_realEditorShell;
+        AZStd::unique_ptr<HammerAtomRenderBackendAdapter> m_realRenderBackend;
+        AZStd::unique_ptr<HammerQtEnvironmentAdapter> m_realQtEnvironment;
+        AZStd::unique_ptr<HammerAzSettingsRegistryAdapter> m_realSettingsProvider;
+
+        IHammerEditorShell* m_registeredEditorShell = nullptr;
+        IHammerRenderBackend* m_registeredRenderBackend = nullptr;
+        IHammerQtEnvironment* m_registeredQtEnvironment = nullptr;
+        IHammerSettingsProvider* m_registeredSettingsProvider = nullptr;
     };
+
+    namespace
+    {
+        struct ViewportCountButtonSpec
+        {
+            int m_count;
+            const char* m_iconPath;
+            const char* m_tooltip;
+        };
+
+        constexpr AZStd::array<ViewportCountButtonSpec, 3> ButtonSpecs = { {
+            { 1, ":/Hammer/single-view.svg", "1 Viewport" },
+            { 2, ":/Hammer/duo-view.svg", "2 Viewports" },
+            { 4, ":/Hammer/quad-view.svg", "4 Viewports" },
+        } };
+    } // namespace
 
     AZ_COMPONENT_IMPL(HammerEditorSystemComponent, "HammerEditorSystemComponent",
         HammerEditorSystemComponentTypeId, BaseSystemComponent);
 
     void HammerEditorSystemComponent::Reflect(AZ::ReflectContext* context)
     {
-        if (auto serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
-        {
-            serializeContext->Class<HammerEditorSystemComponent, HammerSystemComponent>()
-                ->Version(0);
-        }
+        auto* serializeContext = azrtti_cast<AZ::SerializeContext*>(context);
+        serializeContext &&
+            (serializeContext->Class<HammerEditorSystemComponent, HammerSystemComponent>()->Version(0), true);
     }
 
     HammerEditorSystemComponent::HammerEditorSystemComponent() = default;
@@ -138,49 +184,38 @@ namespace Hammer
 
     void HammerEditorSystemComponent::Activate()
     {
+        AZ_Assert(!m_adapters, "HammerEditorSystemComponent::Activate called while already active");
+
         HammerSystemComponent::Activate();
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
         AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusConnect();
 
-        QSettings settings("O3DE", "O3DE");
-        constexpr const char* MigratedStaleLayoutKey = "HammerGem/migratedStaleLayoutOnce";
-        if (!settings.value(MigratedStaleLayoutKey, false).toBool())
-        {
-            settings.remove("ViewportLayout");
-            settings.remove("Editor/fancyWindowLayouts/last");
-            settings.setValue(MigratedStaleLayoutKey, true);
-        }
+        m_adapters = AZStd::make_unique<HammerAdapterRegistry>();
+        AZ_Assert(m_adapters, "Failed to allocate HammerAdapterRegistry");
+        m_adapters->RegisterNullAdapters();
+        m_adapters->UpgradeSettingsProvider();
+        m_adapters->UpgradeEditorShell();
 
-        m_originalIconsVisiblePreference = AzToolsFramework::IconsVisible();
-        AzToolsFramework::SetIconsVisible(false);
+        AZ::Interface<IHammerEditorShell>::Get()->PrepareEditorChrome();
     }
 
     void HammerEditorSystemComponent::Deactivate()
     {
-        AzToolsFramework::SetIconsVisible(m_originalIconsVisiblePreference);
+        AZ_Assert(m_adapters, "HammerEditorSystemComponent::Deactivate called while not active");
+
+        AZ::Interface<IHammerEditorShell>::Get()->RestoreEditorChrome();
 
         DestroyViewportCountButtons();
 
-        if (m_viewportFilter)
-        {
-            if (qApp)
-            {
-                qApp->removeEventFilter(m_viewportFilter);
-            }
-            delete m_viewportFilter;
-            m_viewportFilter = nullptr;
-        }
+        m_viewportLayoutWidget &&
+            (AZ::Interface<IHammerEditorShell>::Get()->RestoreViewportPaneToDockWidget(m_viewportLayoutWidget), true);
 
-        if (m_paneDockWidget && m_viewportLayoutWidget)
-        {
-            m_viewportLayoutWidget->hide();
-            m_paneDockWidget->setWidget(m_viewportLayoutWidget);
-        }
-
-        AzToolsFramework::CloseViewPane(ViewportPaneName);
-        AzToolsFramework::UnregisterViewPane(ViewportPaneName);
-        m_paneDockWidget = nullptr;
+        AZ::Interface<IHammerEditorShell>::Get()->ClosePane(Names::ViewportPaneName);
         m_viewportLayoutWidget = nullptr;
+        m_viewportLayoutHandle = AZStd::make_unique<NullViewportLayoutHandle>();
+
+        m_adapters->Shutdown();
+        m_adapters.reset();
 
         AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusDisconnect();
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
@@ -189,16 +224,16 @@ namespace Hammer
 
     void HammerEditorSystemComponent::NotifyRegisterViews()
     {
+        AZ_Assert(m_adapters, "NotifyRegisterViews called before Activate");
         RegisterViewportPane();
     }
 
     void HammerEditorSystemComponent::NotifyEditorInitialized()
     {
-        if (qApp)
-        {
-            m_viewportFilter = new ViewportSizeFilter(qApp);
-            qApp->installEventFilter(m_viewportFilter);
-        }
+        AZ_Assert(m_adapters, "NotifyEditorInitialized called before Activate");
+
+        m_adapters->UpgradeQtEnvironment();
+        m_adapters->UpgradeRenderBackend();
 
         EmbedViewportInCenter();
         CreateViewportCountButtons();
@@ -206,14 +241,10 @@ namespace Hammer
 
     void HammerEditorSystemComponent::OnActionRegistrationHook()
     {
-        auto* actionManagerInterface = AZ::Interface<AzToolsFramework::ActionManagerInterface>::Get();
-        auto* hotKeyManagerInterface = AZ::Interface<AzToolsFramework::HotKeyManagerInterface>::Get();
-        AZ_Error("HammerEditorSystemComponent", actionManagerInterface, "Could not find AzToolsFramework::ActionManagerInterface");
-        AZ_Error("HammerEditorSystemComponent", hotKeyManagerInterface, "Could not find AzToolsFramework::HotKeyManagerInterface");
-        if (!actionManagerInterface || !hotKeyManagerInterface)
-        {
-            return;
-        }
+        AZ_Assert(m_adapters, "OnActionRegistrationHook called before Activate");
+
+        auto* shell = AZ::Interface<IHammerEditorShell>::Get();
+        AZ_Assert(shell, "IHammerEditorShell must be registered before OnActionRegistrationHook is called");
 
         struct HotkeyDef
         {
@@ -230,234 +261,117 @@ namespace Hammer
 
         for (const HotkeyDef& def : layoutHotkeys)
         {
-            AzToolsFramework::ActionProperties actionProperties;
-            actionProperties.m_name = def.m_name;
-            actionProperties.m_description = AZStd::string::format("Switch Hammer to the %s layout", def.m_name);
-            actionProperties.m_category = "Viewport";
-
-            actionManagerInterface->RegisterAction(
-                EditorIdentifiers::MainWindowActionContextIdentifier, def.m_id, actionProperties,
+            const AZStd::string description = AZStd::string::format("Switch Hammer to the %s layout", def.m_name);
+            shell->RegisterHotkeyAction(
+                def.m_id, def.m_name, description.c_str(), "Viewport", def.m_hotkey,
                 [this, count = def.m_count]
                 {
-                    if (m_viewportLayoutWidget)
-                    {
-                        m_viewportLayoutWidget->SetViewportCount(count);
-                    }
+                    m_viewportLayoutHandle->SetViewportCount(count);
                 });
-            hotKeyManagerInterface->SetActionHotKey(def.m_id, def.m_hotkey);
         }
 
-        constexpr AZStd::string_view maximizeId = "o3de.action.hammer.viewportToggleMaximize";
-        AzToolsFramework::ActionProperties maximizeProperties;
-        maximizeProperties.m_name = "Toggle Maximize Viewport";
-        maximizeProperties.m_description = "Maximize or restore the currently active Hammer viewport";
-        maximizeProperties.m_category = "Viewport";
-
-        actionManagerInterface->RegisterAction(
-            EditorIdentifiers::MainWindowActionContextIdentifier, maximizeId, maximizeProperties,
+        shell->RegisterHotkeyAction(
+            "o3de.action.hammer.viewportToggleMaximize", "Toggle Maximize Viewport",
+            "Maximize or restore the currently active Hammer viewport", "Viewport", "Ctrl+4",
             [this]
             {
-                if (m_viewportLayoutWidget)
-                {
-                    m_viewportLayoutWidget->ToggleMaximizeActiveViewport();
-                }
+                m_viewportLayoutHandle->ToggleMaximizeActiveViewport();
             });
-        hotKeyManagerInterface->SetActionHotKey(maximizeId, "Ctrl+4");
     }
 
     void HammerEditorSystemComponent::RegisterViewportPane()
     {
-        AzToolsFramework::ViewPaneOptions viewOptions;
-        viewOptions.isDeletable = true;
-        viewOptions.showInMenu = true;
-        viewOptions.isDisabledInComponentMode = false;
-
-        AzToolsFramework::RegisterViewPane<QWidget>(
-            ViewportPaneName,
-            "Viewport",
-            viewOptions,
+        AZ::Interface<IHammerEditorShell>::Get()->RegisterViewportPane(
+            Names::ViewportPaneName,
             [this](QWidget* parent) -> QWidget*
             {
-                if (m_viewportLayoutWidget)
-                {
-                    AZ_Warning(
-                        "HammerEditorSystemComponent", false,
-                        "The '%s' view pane's widget was requested a second time; returning a placeholder instead "
-                        "of constructing a duplicate HammerViewportLayoutWidget",
-                        ViewportPaneName);
-                    return new QWidget(parent);
-                }
-
+                AZ_Assert(
+                    !m_viewportLayoutWidget, "The '%s' view pane's widget was requested a second time", Names::ViewportPaneName);
                 m_viewportLayoutWidget = new HammerViewportLayoutWidget(parent);
                 AZ_Assert(m_viewportLayoutWidget, "Failed to allocate HammerViewportLayoutWidget");
+                m_viewportLayoutHandle = AZStd::make_unique<LiveViewportLayoutHandle>(m_viewportLayoutWidget);
                 return m_viewportLayoutWidget;
             });
     }
 
     void HammerEditorSystemComponent::EmbedViewportInCenter()
     {
-        QWidget* mainWindowWidget = nullptr;
-        AzToolsFramework::EditorRequestBus::BroadcastResult(mainWindowWidget, &AzToolsFramework::EditorRequests::GetMainWindow);
-        AZ_Error("HammerEditorSystemComponent", mainWindowWidget, "Could not get the Editor main window");
-        if (!mainWindowWidget)
-        {
-            return;
-        }
+        AZ_Assert(m_adapters, "EmbedViewportInCenter called before Activate");
 
-        QWidget* oldViewport = FindDescendantByClassName(mainWindowWidget, "EditorViewportWidget");
-        AZ_Error("HammerEditorSystemComponent", oldViewport, "Could not find the main EditorViewportWidget");
-        if (!oldViewport)
-        {
-            return;
-        }
+        auto* renderBackend = AZ::Interface<IHammerRenderBackend>::Get();
+        AZ_Assert(renderBackend, "IHammerRenderBackend must be registered before EmbedViewportInCenter is called");
+        renderBackend->RenameDefaultViewportContext(Names::HiddenPerspectiveViewportContextAzName());
 
-        QMainWindow* viewPaneHost = nullptr;
-        for (QWidget* ancestor = oldViewport->parentWidget(); ancestor; ancestor = ancestor->parentWidget())
-        {
-            if (QMainWindow* mainWindow = qobject_cast<QMainWindow*>(ancestor))
+        const AZStd::optional<QWidget*> oldViewport = AZ::Interface<IHammerEditorShell>::Get()->EmbedViewportPaneAsCentralWidget(
+            Names::ViewportPaneName,
+            [this]() -> QWidget*
             {
-                viewPaneHost = mainWindow;
-                break;
-            }
-        }
-        AZ_Error("HammerEditorSystemComponent", viewPaneHost, "Could not find the QMainWindow hosting the main viewport");
-        if (!viewPaneHost)
-        {
-            return;
-        }
+                return m_viewportLayoutWidget;
+            });
 
-        QWidget* oldCentralWidget = viewPaneHost->centralWidget();
+        QWidget* oldViewportPtr = nullptr;
+        oldViewport.has_value() && (oldViewportPtr = *oldViewport, true);
 
-        AZ_Assert(oldViewport, "oldViewport must be non-null here - already checked above");
-        if (auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get())
-        {
-            AZ::RPI::ViewportContextPtr defaultContext = viewportContextManager->GetDefaultViewportContext();
-            AZ_Error(
-                "HammerEditorSystemComponent", defaultContext,
-                "Could not find the current default ViewportContext to free its name from the real viewport");
-            if (defaultContext)
-            {
-                viewportContextManager->RenameViewportContext(defaultContext, AZ::Name("Hammer Hidden Perspective Viewport"));
-            }
-        }
-
-        AzToolsFramework::OpenViewPane(ViewportPaneName);
-        QWidget* content = AzToolsFramework::GetViewPaneWidget<QWidget>(ViewportPaneName);
-        AZ_Error("HammerEditorSystemComponent", content, "Could not open the '%s' view pane", ViewportPaneName);
-        if (!content)
-        {
-            return;
-        }
-        AZ_Assert(
-            content == m_viewportLayoutWidget, "Opened '%s' view pane's content is not the HammerViewportLayoutWidget it was given",
-            ViewportPaneName);
-
-        m_paneDockWidget = qobject_cast<QDockWidget*>(content->parentWidget());
-        AZ_Error("HammerEditorSystemComponent", m_paneDockWidget, "Could not find the dock widget hosting the '%s' view pane", ViewportPaneName);
-        if (!m_paneDockWidget)
-        {
-            return;
-        }
-
-        viewPaneHost->removeDockWidget(m_paneDockWidget);
-        m_paneDockWidget->hide();
-        m_paneDockWidget->setWidget(nullptr);
-
-        viewPaneHost->setCentralWidget(content);
-        content->show();
-
-        if (oldCentralWidget && oldCentralWidget != content)
-        {
-            oldCentralWidget->hide();
-            oldCentralWidget->setParent(nullptr);
-        }
-
-        AZ_Assert(m_viewportLayoutWidget, "m_viewportLayoutWidget is null after being validated as 'content' above");
-        m_viewportLayoutWidget->SetHiddenRealViewport(oldViewport);
+        (oldViewportPtr && m_viewportLayoutWidget) && (m_viewportLayoutWidget->SetHiddenRealViewport(*oldViewportPtr), true);
     }
 
     void HammerEditorSystemComponent::CreateViewportCountButtons()
     {
-        if (!m_viewportLayoutWidget)
-        {
-            return;
-        }
+        AZ_Assert(m_viewportCountButtons.empty(), "CreateViewportCountButtons called while buttons already exist");
 
-        QWidget* mainWindowWidget = nullptr;
-        AzToolsFramework::EditorRequestBus::BroadcastResult(mainWindowWidget, &AzToolsFramework::EditorRequests::GetMainWindow);
-        auto* editorMainWindow = qobject_cast<QMainWindow*>(mainWindowWidget);
-        AZ_Error(
-            "HammerEditorSystemComponent", editorMainWindow, "Could not find the Editor's main QMainWindow to host viewport-count buttons");
-        if (!editorMainWindow)
-        {
-            return;
-        }
+        QStatusBar* statusBar = AZ::Interface<IHammerEditorShell>::Get()->GetMainWindowStatusBar();
+        AZ_Error("HammerEditorSystemComponent", statusBar, "Could not find the Editor's status bar to host viewport-count buttons");
 
-        QStatusBar* statusBar = editorMainWindow->statusBar();
-        AZ_Error("HammerEditorSystemComponent", statusBar, "Editor main window has no status bar");
-        if (!statusBar)
-        {
-            return;
-        }
+        (statusBar && m_viewportLayoutWidget) &&
+            ([this, statusBar]
+             {
+                 for (const ViewportCountButtonSpec& spec : ButtonSpecs)
+                 {
+                     QToolButton* button = new QToolButton(statusBar);
+                     button->setIcon(QIcon(QString::fromUtf8(spec.m_iconPath)));
+                     button->setIconSize(QSize(16, 16));
+                     button->setCheckable(true);
+                     button->setAutoRaise(true);
+                     button->setChecked(spec.m_count == 1);
+                     button->setToolTip(QObject::tr(spec.m_tooltip));
 
-        for (int count : { 1, 2, 4 })
-        {
-            const QString iconPath = count == 1 ? QStringLiteral(":/Hammer/single-view.svg")
-                : count == 2                    ? QStringLiteral(":/Hammer/duo-view.svg")
-                                                 : QStringLiteral(":/Hammer/quad-view.svg");
+                     QPointer<HammerViewportLayoutWidget> layoutWidget = m_viewportLayoutWidget;
+                     const int count = spec.m_count;
+                     QObject::connect(
+                         button, &QToolButton::clicked, button,
+                         [layoutWidget, count]
+                         {
+                             layoutWidget && (layoutWidget->SetViewportCount(count), true);
+                         });
 
-            QToolButton* button = new QToolButton(statusBar);
-            button->setIcon(QIcon(iconPath));
-            button->setIconSize(QSize(16, 16));
-            button->setCheckable(true);
-            button->setAutoRaise(true);
-            button->setChecked(count == 1);
-            button->setToolTip(QObject::tr("%1 Viewport%2").arg(count).arg(count > 1 ? "s" : ""));
+                     statusBar->addPermanentWidget(button);
+                     m_viewportCountButtons.push_back(button);
+                 }
 
-            QPointer<HammerViewportLayoutWidget> layoutWidget = m_viewportLayoutWidget;
-            QObject::connect(
-                button, &QToolButton::clicked, button,
-                [layoutWidget, count]
-                {
-                    if (layoutWidget)
-                    {
-                        layoutWidget->SetViewportCount(count);
-                    }
-                });
-
-            statusBar->addPermanentWidget(button);
-            m_viewportCountButtons.push_back(button);
-        }
-
-        QObject::connect(
-            m_viewportLayoutWidget, &HammerViewportLayoutWidget::ViewportCountChanged, m_viewportLayoutWidget,
-            [this](int count)
-            {
-                int buttonIndex = 0;
-                for (int buttonCount : { 1, 2, 4 })
-                {
-                    if (buttonIndex < static_cast<int>(m_viewportCountButtons.size()) && m_viewportCountButtons[buttonIndex])
-                    {
-                        m_viewportCountButtons[buttonIndex]->setChecked(buttonCount == count);
-                    }
-                    ++buttonIndex;
-                }
-            });
+                 QObject::connect(
+                     m_viewportLayoutWidget, &HammerViewportLayoutWidget::ViewportCountChanged, m_viewportLayoutWidget,
+                     [this](int count)
+                     {
+                         for (size_t i = 0; i < ButtonSpecs.size() && i < m_viewportCountButtons.size(); ++i)
+                         {
+                             QPointer<QToolButton>& button = m_viewportCountButtons[i];
+                             button && (button->setChecked(ButtonSpecs[i].m_count == count), true);
+                         }
+                     });
+             }(),
+             true);
     }
 
     void HammerEditorSystemComponent::DestroyViewportCountButtons()
     {
-        if (m_viewportLayoutWidget)
-        {
-            QObject::disconnect(m_viewportLayoutWidget, &HammerViewportLayoutWidget::ViewportCountChanged, m_viewportLayoutWidget, nullptr);
-        }
+        m_viewportLayoutWidget &&
+            (QObject::disconnect(
+                 m_viewportLayoutWidget, &HammerViewportLayoutWidget::ViewportCountChanged, m_viewportLayoutWidget, nullptr),
+             true);
 
         for (QPointer<QToolButton>& button : m_viewportCountButtons)
         {
-            if (button)
-            {
-                delete button;
-            }
+            button && (delete button, true);
         }
         m_viewportCountButtons.clear();
     }
