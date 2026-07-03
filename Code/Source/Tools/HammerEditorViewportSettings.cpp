@@ -20,11 +20,19 @@ namespace Hammer
     HammerEditorViewportSettings::HammerEditorViewportSettings(AzFramework::ViewportId viewport)
         : m_viewportId(viewport)
     {
+        AZ_Assert(viewport != AzFramework::InvalidViewportId, "HammerEditorViewportSettings constructed with an invalid ViewportId");
         AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler::BusConnect(viewport);
+        AZ_Assert(
+            AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler::BusIsConnectedId(viewport),
+            "HammerEditorViewportSettings failed to connect to ViewportSettingsRequestBus for viewport %u",
+            static_cast<unsigned>(viewport));
     }
 
     HammerEditorViewportSettings::~HammerEditorViewportSettings()
     {
+        AZ_Assert(
+            AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler::BusIsConnected(),
+            "HammerEditorViewportSettings was not connected to ViewportSettingsRequestBus at destruction");
         AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler::BusDisconnect();
     }
 

@@ -65,6 +65,9 @@ namespace Hammer
 
     void HammerWidget::ApplyActiveState()
     {
+        AZ_Assert(m_viewportWidget, "ApplyActiveState called without an initialized viewport widget");
+        AZ_Assert(m_sceneInitialized, "ApplyActiveState called before the scene was initialized");
+
         m_viewportWidget->SetInputProcessingEnabled(m_active);
 
         m_active &&
@@ -90,6 +93,9 @@ namespace Hammer
 
     void HammerWidget::InitializeScene()
     {
+        AZ_Assert(!m_sceneInitialized, "InitializeScene called after the scene was already initialized");
+        AZ_Assert(m_viewportWidget, "InitializeScene called without an allocated viewport widget");
+
         m_viewportWidget->InitializeViewportContext();
         m_sceneInitialized = true;
 
@@ -112,6 +118,7 @@ namespace Hammer
 
     void HammerWidget::ApplyRenderTickState()
     {
+        AZ_Assert(m_viewportWidget, "ApplyRenderTickState called without an initialized viewport widget");
         auto* renderBackend = AZ::Interface<IHammerRenderBackend>::Get();
         AZ_Assert(renderBackend, "IHammerRenderBackend must be registered before ApplyRenderTickState is called");
         renderBackend->SetRenderTickEnabled(m_viewportWidget->GetViewportContext(), m_renderTickEnabled);

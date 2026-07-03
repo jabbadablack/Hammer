@@ -83,16 +83,22 @@ namespace Hammer
     HammerQtEnvironmentAdapter::HammerQtEnvironmentAdapter()
     {
         AZ_Assert(qApp, "HammerQtEnvironmentAdapter constructed before a QApplication exists");
+        AZ_Assert(!m_filter, "HammerQtEnvironmentAdapter constructed with a pre-existing size-guard filter");
     }
 
     HammerQtEnvironmentAdapter::~HammerQtEnvironmentAdapter()
     {
+        AZ_Assert(!m_filter, "HammerQtEnvironmentAdapter destroyed without RemoveMinimumSizeGuard being called first");
         RemoveMinimumSizeGuard();
     }
 
     void HammerQtEnvironmentAdapter::InstallMinimumSizeGuard()
     {
+        AZ_Assert(!m_filter, "InstallMinimumSizeGuard called while a size-guard filter is already installed");
+        AZ_Assert(qApp, "InstallMinimumSizeGuard called without a QApplication");
+
         m_filter = new MinimumSizeGuardFilter(qApp);
+        AZ_Assert(m_filter, "Failed to allocate MinimumSizeGuardFilter");
         qApp->installEventFilter(m_filter);
     }
 

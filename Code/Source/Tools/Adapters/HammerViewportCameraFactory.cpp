@@ -81,6 +81,7 @@ namespace Hammer
 
     AzFramework::ViewportControllerPtr CreateViewportCameraController(AzFramework::ViewportId viewportId)
     {
+        AZ_Assert(viewportId != AzFramework::InvalidViewportId, "CreateViewportCameraController called with an invalid ViewportId");
         auto* settings = AZ::Interface<IHammerSettingsProvider>::Get();
         AZ_Assert(settings, "CreateViewportCameraController requires IHammerSettingsProvider to be registered");
 
@@ -123,6 +124,8 @@ namespace Hammer
 
         auto scrollCamera = AZStd::make_shared<AzFramework::LookScrollTranslationCameraInput>();
         scrollCamera->m_scrollSpeedFn = [settings] { return settings->CameraDollyScrollSpeed(); };
+
+        AZ_Assert(scrollCamera, "Failed to allocate LookScrollTranslationCameraInput");
 
         auto orbitCamera = AZStd::make_shared<AzFramework::OrbitCameraInput>(settings->CameraOrbitChannelId());
         AZ_Assert(orbitCamera, "Failed to allocate OrbitCameraInput");

@@ -22,7 +22,8 @@ namespace Hammer
         virtual void RestoreEditorChrome() = 0;
 
         virtual void RegisterViewportPane(const char* paneName, const AZStd::function<QWidget*(QWidget*)>& factory) = 0;
-        virtual AZStd::optional<QWidget*> EmbedViewportPaneAsCentralWidget(const char* paneName, QWidget* expectedContent) = 0;
+        virtual AZStd::optional<QWidget*> EmbedViewportPaneAsCentralWidget(
+            const char* paneName, const AZStd::function<QWidget*()>& expectedContentAccessor) = 0;
         virtual void RestoreViewportPaneToDockWidget(QWidget* content) = 0;
         virtual void ClosePane(const char* paneName) = 0;
 

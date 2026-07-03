@@ -11,7 +11,7 @@ namespace Hammer
         void RestoreEditorChrome() override {}
 
         void RegisterViewportPane(const char*, const AZStd::function<QWidget*(QWidget*)>&) override {}
-        AZStd::optional<QWidget*> EmbedViewportPaneAsCentralWidget(const char*, QWidget*) override
+        AZStd::optional<QWidget*> EmbedViewportPaneAsCentralWidget(const char*, const AZStd::function<QWidget*()>&) override
         {
             return AZStd::nullopt;
         }

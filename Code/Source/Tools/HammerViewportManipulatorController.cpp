@@ -26,6 +26,7 @@ namespace Hammer
         , m_viewportSettings(AZStd::make_unique<HammerEditorViewportSettings>(viewport))
     {
         AZ_Assert(controller, "HammerViewportManipulatorControllerInstance constructed with a null controller");
+        AZ_Assert(viewport != AzFramework::InvalidViewportId, "HammerViewportManipulatorControllerInstance constructed with an invalid ViewportId");
         AzToolsFramework::ViewportInteraction::EditorEntityViewportInteractionRequestBus::Handler::BusConnect(viewport);
     }
 
@@ -50,6 +51,11 @@ namespace Hammer
     void HammerViewportManipulatorControllerInstance::ProcessRelevantInputEvent(
         const AzFramework::ViewportControllerInputEvent& event, bool& interactionHandled)
     {
+        AZ_Assert(
+            event.m_priority == ManipulatorPriority || event.m_priority == InteractionPriority,
+            "ProcessRelevantInputEvent called with an unexpected controller priority");
+        AZ_Assert(!interactionHandled, "ProcessRelevantInputEvent called with interactionHandled already set");
+
         using AzToolsFramework::ViewportInteraction::Helpers;
         using AzToolsFramework::ViewportInteraction::KeyboardModifier;
         using AzToolsFramework::ViewportInteraction::MouseButton;
@@ -123,6 +129,9 @@ namespace Hammer
         AZStd::optional<AzToolsFramework::ViewportInteraction::MouseButton>& overrideButton)
     {
         using AzFramework::InputChannel;
+        using AzToolsFramework::ViewportInteraction::MouseButton;
+
+        AZ_Assert(mouseButton != MouseButton::None, "ClassifyMouseButton called with MouseButton::None");
 
         const AZ::u32 mouseButtonValue = static_cast<AZ::u32>(mouseButton);
         overrideButton = mouseButton;
@@ -179,6 +188,9 @@ namespace Hammer
         const AzFramework::ViewportControllerInputEvent& event, AzToolsFramework::ViewportInteraction::KeyboardModifier keyboardModifier)
     {
         using AzFramework::InputChannel;
+        using AzToolsFramework::ViewportInteraction::KeyboardModifier;
+
+        AZ_Assert(keyboardModifier != KeyboardModifier::None, "ClassifyKeyboardModifier called with KeyboardModifier::None");
 
         const AZ::u32 modifierBit = static_cast<AZ::u32>(keyboardModifier);
         const auto state = event.m_inputChannel.GetState();
@@ -211,6 +223,11 @@ namespace Hammer
         using InteractionBus = AzToolsFramework::EditorInteractionSystemViewportSelectionRequestBus;
         using AzToolsFramework::ViewportInteraction::MouseInteraction;
         using AzToolsFramework::ViewportInteraction::MouseInteractionEvent;
+
+        AZ_Assert(
+            event.m_priority == ManipulatorPriority || event.m_priority == InteractionPriority,
+            "DispatchMouseInteractionEvent called with an unexpected controller priority");
+        AZ_Assert(!interactionHandled, "DispatchMouseInteractionEvent called with interactionHandled already set");
 
         MouseInteraction mouseInteraction = m_mouseInteraction;
         overrideButton.has_value() &&

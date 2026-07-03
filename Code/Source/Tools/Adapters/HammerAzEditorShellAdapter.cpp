@@ -22,6 +22,8 @@ namespace Hammer
 {
     void HammerAzEditorShellAdapter::PrepareEditorChrome()
     {
+        AZ_Assert(!m_paneDockWidget, "PrepareEditorChrome should run once, before any view pane has been embedded");
+
         QSettings settings("O3DE", "O3DE");
         constexpr const char* MigratedStaleLayoutKey = "HammerGem/migratedStaleLayoutOnce";
         const bool alreadyMigrated = settings.value(MigratedStaleLayoutKey, false).toBool();
@@ -31,15 +33,23 @@ namespace Hammer
 
         m_originalIconsVisiblePreference = AzToolsFramework::IconsVisible();
         AzToolsFramework::SetIconsVisible(false);
+
+        AZ_Assert(!AzToolsFramework::IconsVisible(), "SetIconsVisible(false) did not take effect");
     }
 
     void HammerAzEditorShellAdapter::RestoreEditorChrome()
     {
         AzToolsFramework::SetIconsVisible(m_originalIconsVisiblePreference);
+        AZ_Assert(
+            AzToolsFramework::IconsVisible() == m_originalIconsVisiblePreference,
+            "RestoreEditorChrome failed to restore the original IconsVisible preference");
     }
 
     void HammerAzEditorShellAdapter::RegisterViewportPane(const char* paneName, const AZStd::function<QWidget*(QWidget*)>& factory)
     {
+        AZ_Assert(paneName, "RegisterViewportPane called with a null paneName");
+        AZ_Assert(factory, "RegisterViewportPane called with an empty factory");
+
         AzToolsFramework::ViewPaneOptions viewOptions;
         viewOptions.isDeletable = true;
         viewOptions.showInMenu = true;
@@ -53,8 +63,12 @@ namespace Hammer
             });
     }
 
-    AZStd::optional<QWidget*> HammerAzEditorShellAdapter::EmbedViewportPaneAsCentralWidget(const char* paneName, QWidget* expectedContent)
+    AZStd::optional<QWidget*> HammerAzEditorShellAdapter::EmbedViewportPaneAsCentralWidget(
+        const char* paneName, const AZStd::function<QWidget*()>& expectedContentAccessor)
     {
+        AZ_Assert(paneName, "EmbedViewportPaneAsCentralWidget called with a null paneName");
+        AZ_Assert(expectedContentAccessor, "EmbedViewportPaneAsCentralWidget called with an empty expectedContentAccessor");
+
         QWidget* mainWindowWidget = nullptr;
         AzToolsFramework::EditorRequestBus::BroadcastResult(mainWindowWidget, &AzToolsFramework::EditorRequests::GetMainWindow);
         AZ_Error("HammerAzEditorShellAdapter", mainWindowWidget, "Could not get the Editor main window");
@@ -84,6 +98,9 @@ namespace Hammer
         QWidget* content = nullptr;
         viewPaneHost && (content = AzToolsFramework::GetViewPaneWidget<QWidget>(paneName), true);
         AZ_Error("HammerAzEditorShellAdapter", content, "Could not open the '%s' view pane", paneName);
+
+        QWidget* expectedContent = nullptr;
+        content && (expectedContent = expectedContentAccessor(), true);
         AZ_Assert(
             !content || content == expectedContent, "Opened '%s' view pane's content is not the expected widget", paneName);
 
@@ -101,16 +118,24 @@ namespace Hammer
             (oldCentralWidget->hide(), oldCentralWidget->setParent(nullptr), true);
 
         const bool succeeded = viewPaneHost && oldViewport && content && paneDockWidget;
+        AZ_Warning(
+            "HammerAzEditorShellAdapter", succeeded, "Could not fully embed the '%s' view pane as the central widget", paneName);
         return OptionalUtils::OptionalWhen(succeeded, oldViewport);
     }
 
     void HammerAzEditorShellAdapter::RestoreViewportPaneToDockWidget(QWidget* content)
     {
+        AZ_Assert(content, "RestoreViewportPaneToDockWidget called with a null content widget");
+        AZ_Warning(
+            "HammerAzEditorShellAdapter", m_paneDockWidget,
+            "No dock widget was captured to restore the view pane's content into; it may already have been closed");
+
         (m_paneDockWidget && content) && (content->hide(), m_paneDockWidget->setWidget(content), true);
     }
 
     void HammerAzEditorShellAdapter::ClosePane(const char* paneName)
     {
+        AZ_Assert(paneName, "ClosePane called with a null paneName");
         AzToolsFramework::CloseViewPane(paneName);
         AzToolsFramework::UnregisterViewPane(paneName);
     }
@@ -119,6 +144,9 @@ namespace Hammer
         const char* actionId, const char* name, const char* description, const char* category, const char* hotkey,
         AZStd::function<void()> callback)
     {
+        AZ_Assert(actionId, "RegisterHotkeyAction called with a null actionId");
+        AZ_Assert(callback, "RegisterHotkeyAction called with an empty callback");
+
         auto* actionManagerInterface = AZ::Interface<AzToolsFramework::ActionManagerInterface>::Get();
         auto* hotKeyManagerInterface = AZ::Interface<AzToolsFramework::HotKeyManagerInterface>::Get();
         AZ_Error("HammerAzEditorShellAdapter", actionManagerInterface, "Could not find AzToolsFramework::ActionManagerInterface");

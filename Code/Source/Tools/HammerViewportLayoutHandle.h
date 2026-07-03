@@ -15,7 +15,6 @@ namespace Hammer
 
         virtual void SetViewportCount(int count) = 0;
         virtual void ToggleMaximizeActiveViewport() = 0;
-        virtual bool IsBound() const = 0;
     };
 
     class NullViewportLayoutHandle final : public IHammerViewportLayoutHandle
@@ -23,7 +22,6 @@ namespace Hammer
     public:
         void SetViewportCount(int count) override;
         void ToggleMaximizeActiveViewport() override;
-        bool IsBound() const override;
     };
 
     class LiveViewportLayoutHandle final : public IHammerViewportLayoutHandle
@@ -33,7 +31,6 @@ namespace Hammer
 
         void SetViewportCount(int count) override;
         void ToggleMaximizeActiveViewport() override;
-        bool IsBound() const override;
 
     private:
         QPointer<HammerViewportLayoutWidget> m_widget;

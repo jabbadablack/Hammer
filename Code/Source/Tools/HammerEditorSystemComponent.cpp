@@ -32,6 +32,9 @@ namespace Hammer
     public:
         void RegisterNullAdapters()
         {
+            AZ_Assert(!m_registeredEditorShell, "RegisterNullAdapters called more than once");
+            AZ_Assert(!AZ::Interface<IHammerEditorShell>::Get(), "IHammerEditorShell is already registered by another instance");
+
             m_registeredEditorShell = &m_nullEditorShell;
             m_registeredRenderBackend = &m_nullRenderBackend;
             m_registeredQtEnvironment = &m_nullQtEnvironment;
@@ -45,15 +48,24 @@ namespace Hammer
 
         void UpgradeSettingsProvider()
         {
+            AZ_Assert(m_registeredSettingsProvider, "UpgradeSettingsProvider called before RegisterNullAdapters");
+
             m_realSettingsProvider = AZStd::make_unique<HammerAzSettingsRegistryAdapter>();
+            AZ_Assert(m_realSettingsProvider, "Failed to allocate HammerAzSettingsRegistryAdapter");
             AZ::Interface<IHammerSettingsProvider>::Unregister(m_registeredSettingsProvider);
             m_registeredSettingsProvider = m_realSettingsProvider.get();
             AZ::Interface<IHammerSettingsProvider>::Register(m_registeredSettingsProvider);
+            AZ_Assert(
+                AZ::Interface<IHammerSettingsProvider>::Get() == m_registeredSettingsProvider,
+                "IHammerSettingsProvider was not upgraded to the real adapter");
         }
 
         void UpgradeQtEnvironment()
         {
+            AZ_Assert(m_registeredQtEnvironment, "UpgradeQtEnvironment called before RegisterNullAdapters");
+
             m_realQtEnvironment = AZStd::make_unique<HammerQtEnvironmentAdapter>();
+            AZ_Assert(m_realQtEnvironment, "Failed to allocate HammerQtEnvironmentAdapter");
             AZ::Interface<IHammerQtEnvironment>::Unregister(m_registeredQtEnvironment);
             m_registeredQtEnvironment = m_realQtEnvironment.get();
             AZ::Interface<IHammerQtEnvironment>::Register(m_registeredQtEnvironment);
@@ -62,6 +74,8 @@ namespace Hammer
 
         void UpgradeRenderBackend()
         {
+            AZ_Assert(m_registeredRenderBackend, "UpgradeRenderBackend called before RegisterNullAdapters");
+
             auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
             AZ_Error("HammerEditorSystemComponent", viewportContextManager, "Could not find AZ::RPI::ViewportContextRequestsInterface");
 
@@ -70,11 +84,17 @@ namespace Hammer
                  AZ::Interface<IHammerRenderBackend>::Unregister(m_registeredRenderBackend),
                  (m_registeredRenderBackend = m_realRenderBackend.get()),
                  AZ::Interface<IHammerRenderBackend>::Register(m_registeredRenderBackend), true);
+
+            AZ_Warning(
+                "HammerEditorSystemComponent", m_realRenderBackend, "IHammerRenderBackend remains the Null Object implementation");
         }
 
         void UpgradeEditorShell()
         {
+            AZ_Assert(m_registeredEditorShell, "UpgradeEditorShell called before RegisterNullAdapters");
+
             m_realEditorShell = AZStd::make_unique<HammerAzEditorShellAdapter>();
+            AZ_Assert(m_realEditorShell, "Failed to allocate HammerAzEditorShellAdapter");
             AZ::Interface<IHammerEditorShell>::Unregister(m_registeredEditorShell);
             m_registeredEditorShell = m_realEditorShell.get();
             AZ::Interface<IHammerEditorShell>::Register(m_registeredEditorShell);
@@ -82,6 +102,9 @@ namespace Hammer
 
         void Shutdown()
         {
+            AZ_Assert(m_registeredEditorShell, "Shutdown called before RegisterNullAdapters");
+            AZ_Assert(m_registeredSettingsProvider, "Shutdown called before RegisterNullAdapters");
+
             m_realQtEnvironment && (m_realQtEnvironment->RemoveMinimumSizeGuard(), true);
 
             AZ::Interface<IHammerEditorShell>::Unregister(m_registeredEditorShell);
@@ -161,11 +184,14 @@ namespace Hammer
 
     void HammerEditorSystemComponent::Activate()
     {
+        AZ_Assert(!m_adapters, "HammerEditorSystemComponent::Activate called while already active");
+
         HammerSystemComponent::Activate();
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
         AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusConnect();
 
         m_adapters = AZStd::make_unique<HammerAdapterRegistry>();
+        AZ_Assert(m_adapters, "Failed to allocate HammerAdapterRegistry");
         m_adapters->RegisterNullAdapters();
         m_adapters->UpgradeSettingsProvider();
         m_adapters->UpgradeEditorShell();
@@ -175,6 +201,8 @@ namespace Hammer
 
     void HammerEditorSystemComponent::Deactivate()
     {
+        AZ_Assert(m_adapters, "HammerEditorSystemComponent::Deactivate called while not active");
+
         AZ::Interface<IHammerEditorShell>::Get()->RestoreEditorChrome();
 
         DestroyViewportCountButtons();
@@ -196,11 +224,15 @@ namespace Hammer
 
     void HammerEditorSystemComponent::NotifyRegisterViews()
     {
+        AZ_Assert(m_adapters, "NotifyRegisterViews called before Activate");
         RegisterViewportPane();
     }
 
     void HammerEditorSystemComponent::NotifyEditorInitialized()
     {
+        AZ_Assert(m_adapters, "NotifyEditorInitialized called before Activate");
+        AZ_Assert(m_viewportLayoutWidget, "NotifyEditorInitialized called before the viewport pane was registered");
+
         m_adapters->UpgradeQtEnvironment();
         m_adapters->UpgradeRenderBackend();
 
@@ -210,7 +242,10 @@ namespace Hammer
 
     void HammerEditorSystemComponent::OnActionRegistrationHook()
     {
+        AZ_Assert(m_adapters, "OnActionRegistrationHook called before Activate");
+
         auto* shell = AZ::Interface<IHammerEditorShell>::Get();
+        AZ_Assert(shell, "IHammerEditorShell must be registered before OnActionRegistrationHook is called");
 
         struct HotkeyDef
         {
@@ -262,10 +297,18 @@ namespace Hammer
 
     void HammerEditorSystemComponent::EmbedViewportInCenter()
     {
-        AZ::Interface<IHammerRenderBackend>::Get()->RenameDefaultViewportContext(Names::HiddenPerspectiveViewportContextAzName());
+        AZ_Assert(m_viewportLayoutWidget, "EmbedViewportInCenter called before the viewport pane was registered");
 
-        const AZStd::optional<QWidget*> oldViewport =
-            AZ::Interface<IHammerEditorShell>::Get()->EmbedViewportPaneAsCentralWidget(Names::ViewportPaneName, m_viewportLayoutWidget);
+        auto* renderBackend = AZ::Interface<IHammerRenderBackend>::Get();
+        AZ_Assert(renderBackend, "IHammerRenderBackend must be registered before EmbedViewportInCenter is called");
+        renderBackend->RenameDefaultViewportContext(Names::HiddenPerspectiveViewportContextAzName());
+
+        const AZStd::optional<QWidget*> oldViewport = AZ::Interface<IHammerEditorShell>::Get()->EmbedViewportPaneAsCentralWidget(
+            Names::ViewportPaneName,
+            [this]() -> QWidget*
+            {
+                return m_viewportLayoutWidget;
+            });
 
         QWidget* oldViewportPtr = nullptr;
         oldViewport.has_value() && (oldViewportPtr = *oldViewport, true);
@@ -275,6 +318,8 @@ namespace Hammer
 
     void HammerEditorSystemComponent::CreateViewportCountButtons()
     {
+        AZ_Assert(m_viewportCountButtons.empty(), "CreateViewportCountButtons called while buttons already exist");
+
         QStatusBar* statusBar = AZ::Interface<IHammerEditorShell>::Get()->GetMainWindowStatusBar();
         AZ_Error("HammerEditorSystemComponent", statusBar, "Could not find the Editor's status bar to host viewport-count buttons");
 

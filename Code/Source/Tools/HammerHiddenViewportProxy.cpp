@@ -21,8 +21,10 @@ namespace Hammer
         , m_gridContainer(gridContainer)
     {
         m_syncTimer = new QTimer(this);
+        AZ_Assert(m_syncTimer, "Failed to allocate the SyncToActive QTimer");
         connect(m_syncTimer, &QTimer::timeout, this, &HammerHiddenViewportProxy::SyncToActive);
         m_syncTimer->start(16);
+        AZ_Assert(m_syncTimer->isActive(), "SyncToActive QTimer failed to start");
     }
 
     void HammerHiddenViewportProxy::SetHiddenRealViewport(QWidget& realViewport)
@@ -32,6 +34,7 @@ namespace Hammer
         realViewport.setFocusPolicy(Qt::NoFocus);
         realViewport.show();
         m_hiddenRealViewport = &realViewport;
+        AZ_Assert(m_hiddenRealViewport, "SetHiddenRealViewport failed to capture the widget it was given");
 
         auto* renderBackend = AZ::Interface<IHammerRenderBackend>::Get();
         AZ_Assert(renderBackend, "IHammerRenderBackend must be registered before SetHiddenRealViewport is called");
@@ -44,6 +47,7 @@ namespace Hammer
     void HammerHiddenViewportProxy::SetActiveViewport(HammerWidget& activeViewport)
     {
         m_activeViewport = &activeViewport;
+        AZ_Assert(m_activeViewport, "SetActiveViewport failed to capture the widget it was given");
     }
 
     void HammerHiddenViewportProxy::SyncToActive()

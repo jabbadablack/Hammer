@@ -36,6 +36,8 @@ namespace Hammer
 
     void HammerAtomRenderBackendAdapter::RenameDefaultViewportContext(const AZ::Name& newName) const
     {
+        AZ_Assert(!newName.IsEmpty(), "RenameDefaultViewportContext called with an empty name");
+
         AZ::RPI::ViewportContextPtr defaultContext = m_viewportContextManager.GetDefaultViewportContext();
         AZ_Error("HammerAtomRenderBackendAdapter", defaultContext, "Could not find the default ViewportContext to rename");
         defaultContext && (m_viewportContextManager.RenameViewportContext(defaultContext, newName), true);
@@ -43,6 +45,7 @@ namespace Hammer
 
     AZ::RPI::ViewportContextPtr HammerAtomRenderBackendAdapter::FindViewportContextByName(const AZ::Name& name) const
     {
+        AZ_Assert(!name.IsEmpty(), "FindViewportContextByName called with an empty name");
         return m_viewportContextManager.GetViewportContextByName(name);
     }
 
@@ -80,6 +83,7 @@ namespace Hammer
         AZ::RPI::ViewportContextPtr viewportContext, AzFramework::ViewportId viewportId, bool active) const
     {
         AZ_Assert(viewportContext, "SyncViewportContextName called with a null ViewportContext");
+        AZ_Assert(viewportId != AzFramework::InvalidViewportId, "SyncViewportContextName called with an invalid ViewportId");
 
         const AZ::Name defaultName = m_viewportContextManager.GetDefaultViewportContextName();
         const AZ::Name currentName = viewportContext->GetName();
@@ -93,11 +97,17 @@ namespace Hammer
     AzFramework::ViewportControllerPtr HammerAtomRenderBackendAdapter::BuildViewportCameraController(
         AzFramework::ViewportId viewportId) const
     {
-        return CreateViewportCameraController(viewportId);
+        AZ_Assert(viewportId != AzFramework::InvalidViewportId, "BuildViewportCameraController called with an invalid ViewportId");
+        AzFramework::ViewportControllerPtr controller = CreateViewportCameraController(viewportId);
+        AZ_Assert(controller, "CreateViewportCameraController failed to build a camera controller");
+        return controller;
     }
 
     AtomToolsFramework::RenderViewportWidget* HammerAtomRenderBackendAdapter::CreateRenderViewportWidget(QWidget* parent) const
     {
-        return new HammerRenderViewportWidget(parent, false);
+        AZ_Assert(parent, "CreateRenderViewportWidget called with a null parent");
+        auto* viewportWidget = new HammerRenderViewportWidget(parent, false);
+        AZ_Assert(viewportWidget, "Failed to allocate HammerRenderViewportWidget");
+        return viewportWidget;
     }
 } // namespace Hammer

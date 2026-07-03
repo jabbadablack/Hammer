@@ -11,14 +11,11 @@ namespace Hammer
     {
     }
 
-    bool NullViewportLayoutHandle::IsBound() const
-    {
-        return false;
-    }
-
     LiveViewportLayoutHandle::LiveViewportLayoutHandle(HammerViewportLayoutWidget* widget)
         : m_widget(widget)
     {
+        AZ_Assert(widget, "LiveViewportLayoutHandle constructed with a null widget");
+        AZ_Assert(m_widget, "LiveViewportLayoutHandle failed to capture the widget it was given");
     }
 
     void LiveViewportLayoutHandle::SetViewportCount(int count)
@@ -29,10 +26,5 @@ namespace Hammer
     void LiveViewportLayoutHandle::ToggleMaximizeActiveViewport()
     {
         m_widget && (m_widget->ToggleMaximizeActiveViewport(), true);
-    }
-
-    bool LiveViewportLayoutHandle::IsBound() const
-    {
-        return m_widget != nullptr;
     }
 } // namespace Hammer

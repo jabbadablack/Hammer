@@ -47,8 +47,9 @@ namespace Hammer
                 {
                     for (HammerWidget* sibling : m_viewports)
                     {
-                        sibling->SetActive(sibling == viewport);
+                        (sibling != viewport) && (sibling->SetActive(false), true);
                     }
+                    viewport->SetActive(true);
                     m_hiddenViewportProxy->SetActiveViewport(*viewport);
                 });
         }
@@ -61,6 +62,9 @@ namespace Hammer
 
     void HammerViewportLayoutWidget::SetViewportCount(int count)
     {
+        AZ_Assert(m_gridLayout, "SetViewportCount called before the grid layout was constructed");
+        AZ_Assert(m_viewports.size() == MaxViewportCount, "SetViewportCount expects all %d viewports to already exist", MaxViewportCount);
+
         count = AZStd::clamp(count, MinViewportCount, MaxViewportCount);
 
         (count != 1) && (RestoreMaximizeSwap(), true);
@@ -87,17 +91,24 @@ namespace Hammer
 
     void HammerViewportLayoutWidget::SetHiddenRealViewport(QWidget& realViewport)
     {
+        AZ_Assert(m_hiddenViewportProxy, "SetHiddenRealViewport called before the hidden viewport proxy was constructed");
         m_hiddenViewportProxy->SetHiddenRealViewport(realViewport);
     }
 
     void HammerViewportLayoutWidget::RestoreMaximizeSwap()
     {
+        AZ_Assert(
+            !m_maximizedFromIndex.has_value() || *m_maximizedFromIndex < static_cast<int>(m_viewports.size()),
+            "RestoreMaximizeSwap has an out-of-range maximized index %d", m_maximizedFromIndex.value_or(-1));
         m_maximizedFromIndex.has_value() && (AZStd::swap(m_viewports[0], m_viewports[*m_maximizedFromIndex]), true);
         m_maximizedFromIndex.reset();
     }
 
     void HammerViewportLayoutWidget::MaximizeActiveViewport()
     {
+        AZ_Assert(!m_viewports.empty(), "MaximizeActiveViewport called with no viewports to maximize");
+        AZ_Assert(!m_maximizedFromIndex.has_value(), "MaximizeActiveViewport called while already maximized");
+
         const AzFramework::ViewportId activeId = m_activeViewportTracker->GetActiveViewportId();
         const auto it = AZStd::find_if(
             m_viewports.begin(), m_viewports.end(),
@@ -118,6 +129,11 @@ namespace Hammer
 
     void HammerViewportLayoutWidget::RestoreFromMaximize()
     {
+        AZ_Assert(m_maximizedFromIndex.has_value(), "RestoreFromMaximize called while not maximized");
+        AZ_Assert(
+            m_preMaximizeViewportCount >= MinViewportCount && m_preMaximizeViewportCount <= MaxViewportCount,
+            "RestoreFromMaximize has an out-of-range pre-maximize viewport count %d", m_preMaximizeViewportCount);
+
         const int restoreCount = m_preMaximizeViewportCount;
         RestoreMaximizeSwap();
         SetViewportCount(restoreCount);
@@ -125,6 +141,8 @@ namespace Hammer
 
     void HammerViewportLayoutWidget::ToggleMaximizeActiveViewport()
     {
+        AZ_Assert(!m_viewports.empty(), "ToggleMaximizeActiveViewport called with no viewports");
+
         using Action = void (HammerViewportLayoutWidget::*)();
         static constexpr AZStd::array<Action, 2> Actions = {
             &HammerViewportLayoutWidget::MaximizeActiveViewport, &HammerViewportLayoutWidget::RestoreFromMaximize
