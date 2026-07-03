@@ -8,6 +8,7 @@
 #include <QPointer>
 
 class QDockWidget;
+class QMainWindow;
 
 namespace Hammer
 {

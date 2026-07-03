@@ -136,8 +136,13 @@ namespace Hammer
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
 
         QSettings settings("O3DE", "O3DE");
-        settings.remove("ViewportLayout");
-        settings.remove("Editor/fancyWindowLayouts/last");
+        constexpr const char* MigratedStaleLayoutKey = "HammerGem/migratedStaleLayoutOnce";
+        if (!settings.value(MigratedStaleLayoutKey, false).toBool())
+        {
+            settings.remove("ViewportLayout");
+            settings.remove("Editor/fancyWindowLayouts/last");
+            settings.setValue(MigratedStaleLayoutKey, true);
+        }
 
         m_originalIconsVisiblePreference = AzToolsFramework::IconsVisible();
         AzToolsFramework::SetIconsVisible(false);
