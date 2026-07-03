@@ -38,6 +38,7 @@ namespace Hammer
         void RestoreMaximizeSwap();
         void MaximizeActiveViewport();
         void RestoreFromMaximize();
+        void ActivateViewport(HammerWidget* viewport);
 
         QGridLayout* m_gridLayout = nullptr;
         QWidget* m_gridContainer = nullptr;

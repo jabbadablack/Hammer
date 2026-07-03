@@ -45,19 +45,24 @@ namespace Hammer
                 viewport, &HammerWidget::ViewportFocusRequested, this,
                 [this, viewport]
                 {
-                    for (HammerWidget* sibling : m_viewports)
-                    {
-                        (sibling != viewport) && (sibling->SetActive(false), true);
-                    }
-                    viewport->SetActive(true);
-                    m_hiddenViewportProxy->SetActiveViewport(*viewport);
+                    ActivateViewport(viewport);
                 });
         }
 
-        m_viewports[0]->SetActive(true);
-        m_hiddenViewportProxy->SetActiveViewport(*m_viewports[0]);
-
         SetViewportCount(1);
+    }
+
+    void HammerViewportLayoutWidget::ActivateViewport(HammerWidget* viewport)
+    {
+        AZ_Assert(viewport, "ActivateViewport called with a null viewport");
+        AZ_Assert(!m_viewports.empty(), "ActivateViewport called with no viewports");
+
+        for (HammerWidget* sibling : m_viewports)
+        {
+            (sibling != viewport) && (sibling->SetActive(false), true);
+        }
+        viewport->SetActive(true);
+        m_hiddenViewportProxy->SetActiveViewport(*viewport);
     }
 
     void HammerViewportLayoutWidget::SetViewportCount(int count)
@@ -84,6 +89,8 @@ namespace Hammer
             m_viewports[i]->show();
             m_viewports[i]->SetRenderTickEnabled(true);
         }
+
+        ActivateViewport(m_viewports[0]);
 
         m_currentViewportCount = count;
         emit ViewportCountChanged(count);
