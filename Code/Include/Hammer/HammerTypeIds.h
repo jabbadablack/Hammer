@@ -16,4 +16,8 @@ namespace Hammer
 
     // Interface TypeIds
     inline constexpr const char* HammerRequestsTypeId = "{355DDE5E-34C4-4C71-B7D4-DAE8CE63B41A}";
+    inline constexpr const char* IHammerEditorShellTypeId = "{C3B645D1-9A07-4E45-AD72-E0B240BAF469}";
+    inline constexpr const char* IHammerRenderBackendTypeId = "{3BE1BE23-420C-4C12-A9BB-31D8AF0C2D73}";
+    inline constexpr const char* IHammerQtEnvironmentTypeId = "{B321B218-A0A0-44F3-B6F5-397328653A45}";
+    inline constexpr const char* IHammerSettingsProviderTypeId = "{E79ADFB9-AFCE-400B-B047-FC538F734993}";
 } // namespace Hammer

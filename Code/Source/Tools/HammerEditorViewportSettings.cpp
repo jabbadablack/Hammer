@@ -1,17 +1,25 @@
 #include "HammerEditorViewportSettings.h"
-#include "HammerActiveViewportTracker.h"
 
-#include <AzToolsFramework/API/SettingsRegistryUtils.h>
-#include <AzToolsFramework/Viewport/ViewportSettings.h>
+#include <Hammer/IHammerSettingsProvider.h>
+
+#include <AzCore/Interface/Interface.h>
+#include <Hammer/HammerEditorViewportBus.h>
 
 namespace Hammer
 {
-    HammerEditorViewportSettings::HammerEditorViewportSettings(
-        AzFramework::ViewportId viewport, AZStd::shared_ptr<ActiveViewportTracker> activeViewportTracker)
-        : m_viewportId(viewport)
-        , m_activeViewportTracker(AZStd::move(activeViewportTracker))
+    namespace
     {
-        AZ_Assert(m_activeViewportTracker, "HammerEditorViewportSettings constructed with a null ActiveViewportTracker");
+        IHammerSettingsProvider& Settings()
+        {
+            auto* settings = AZ::Interface<IHammerSettingsProvider>::Get();
+            AZ_Assert(settings, "IHammerSettingsProvider must be registered before HammerEditorViewportSettings is used");
+            return *settings;
+        }
+    } // namespace
+
+    HammerEditorViewportSettings::HammerEditorViewportSettings(AzFramework::ViewportId viewport)
+        : m_viewportId(viewport)
+    {
         AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler::BusConnect(viewport);
     }
 
@@ -22,71 +30,68 @@ namespace Hammer
 
     bool HammerEditorViewportSettings::GridSnappingEnabled() const
     {
-        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/GridSnapping", true);
+        return Settings().GridSnappingEnabled();
     }
 
     float HammerEditorViewportSettings::GridSize() const
     {
-        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/GridSize", 0.1));
+        return Settings().GridSize();
     }
 
     bool HammerEditorViewportSettings::ShowGrid() const
     {
-        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/ShowGrid", false);
+        return Settings().ShowGrid();
     }
 
     bool HammerEditorViewportSettings::AngleSnappingEnabled() const
     {
-        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/AngleSnapping", false);
+        return Settings().AngleSnappingEnabled();
     }
 
     float HammerEditorViewportSettings::AngleStep() const
     {
-        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/AngleSize", 5.0));
+        return Settings().AngleStep();
     }
 
     float HammerEditorViewportSettings::ManipulatorLineBoundWidth() const
     {
-        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Manipulator/LineBoundWidth", 0.1));
+        return Settings().ManipulatorLineBoundWidth();
     }
 
     float HammerEditorViewportSettings::ManipulatorCircleBoundWidth() const
     {
-        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Manipulator/CircleBoundWidth", 0.1));
+        return Settings().ManipulatorCircleBoundWidth();
     }
 
     bool HammerEditorViewportSettings::StickySelectEnabled() const
     {
-        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/StickySelect", false);
+        return Settings().StickySelectEnabled();
     }
 
     AZ::Vector3 HammerEditorViewportSettings::DefaultEditorCameraPosition() const
     {
-        return AZ::Vector3(
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/x", 0.0)),
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/y", -10.0)),
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/z", 4.0)));
+        return Settings().DefaultEditorCameraPosition();
     }
 
     AZ::Vector2 HammerEditorViewportSettings::DefaultEditorCameraOrientation() const
     {
-        return AZ::Vector2(
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPitch", 0.0)),
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingYaw", 0.0)));
+        return Settings().DefaultEditorCameraOrientation();
     }
 
     bool HammerEditorViewportSettings::IconsVisible() const
     {
-        return m_viewportId == m_activeViewportTracker->GetActiveViewportId();
+        AzFramework::ViewportId activeViewportId = AzFramework::InvalidViewportId;
+        HammerEditorActiveViewportRequestBus::BroadcastResult(activeViewportId, &HammerEditorActiveViewportRequests::GetActiveViewportId);
+        return m_viewportId == activeViewportId;
     }
 
     bool HammerEditorViewportSettings::HelpersVisible() const
     {
-        return AzToolsFramework::HelpersVisible();
+        return Settings().HelpersVisible();
     }
 
     bool HammerEditorViewportSettings::OnlyShowHelpersForSelectedEntities() const
     {
-        return AzToolsFramework::OnlyShowHelpersForSelectedEntities();
+        return Settings().OnlyShowHelpersForSelectedEntities();
     }
 }

@@ -1,22 +1,25 @@
-
 #pragma once
 
 #include <Clients/HammerSystemComponent.h>
 
-#include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 #include <AzToolsFramework/ActionManager/ActionManagerRegistrationNotificationBus.h>
+#include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 
 #include <AzCore/std/containers/vector.h>
+#include <AzCore/std/smart_ptr/unique_ptr.h>
 
+#include "HammerViewportLayoutHandle.h"
+
+#if !defined(Q_MOC_RUN)
 #include <QPointer>
+#endif
 
-class QDockWidget;
-class QMainWindow;
 class QToolButton;
 
 namespace Hammer
 {
     class HammerViewportLayoutWidget;
+    class HammerAdapterRegistry;
 
     class HammerEditorSystemComponent
         : public HammerSystemComponent
@@ -51,10 +54,9 @@ namespace Hammer
         void CreateViewportCountButtons();
         void DestroyViewportCountButtons();
 
+        AZStd::unique_ptr<HammerAdapterRegistry> m_adapters;
+        AZStd::unique_ptr<IHammerViewportLayoutHandle> m_viewportLayoutHandle = AZStd::make_unique<NullViewportLayoutHandle>();
         QPointer<HammerViewportLayoutWidget> m_viewportLayoutWidget;
-        QPointer<QDockWidget> m_paneDockWidget;
         AZStd::vector<QPointer<QToolButton>> m_viewportCountButtons;
-        class ViewportSizeFilter* m_viewportFilter = nullptr;
-        bool m_originalIconsVisiblePreference = true;
     };
 } // namespace Hammer

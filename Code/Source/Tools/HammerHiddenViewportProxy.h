@@ -26,16 +26,16 @@ namespace Hammer
     {
         Q_OBJECT
     public:
-        explicit HammerHiddenViewportProxy(QWidget* gridContainer, QObject* parent = nullptr);
+        explicit HammerHiddenViewportProxy(QWidget& gridContainer, QObject* parent = nullptr);
 
-        void SetHiddenRealViewport(QWidget* realViewport);
-        void SetActiveViewport(HammerWidget* activeViewport);
+        void SetHiddenRealViewport(QWidget& realViewport);
+        void SetActiveViewport(HammerWidget& activeViewport);
 
     private:
         void SyncToActive();
         bool eventFilter(QObject* watched, QEvent* event) override;
 
-        QWidget* m_gridContainer = nullptr;
+        QWidget& m_gridContainer;
         QWidget* m_hiddenRealViewport = nullptr;
         HammerWidget* m_activeViewport = nullptr;
         QTimer* m_syncTimer = nullptr;

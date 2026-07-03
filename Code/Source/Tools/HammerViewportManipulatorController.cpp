@@ -1,16 +1,19 @@
 #include "HammerViewportManipulatorController.h"
 #include "HammerEditorViewportSettings.h"
 
+#include <Hammer/IHammerQtEnvironment.h>
+
+#include <AzCore/Interface/Interface.h>
+#include <AzCore/std/containers/array.h>
+
 #include <AzFramework/Entity/EntityDebugDisplayBus.h>
 #include <AzFramework/Input/Buses/Requests/InputSystemCursorRequestBus.h>
 #include <AzFramework/Input/Devices/Mouse/InputDeviceMouse.h>
 #include <AzFramework/Viewport/ScreenGeometry.h>
 #include <AzFramework/Viewport/ViewportScreen.h>
+#include <AzToolsFramework/Viewport/ViewportInteractionHelpers.h>
 #include <AzToolsFramework/ViewportSelection/EditorInteractionSystemViewportSelectionRequestBus.h>
 #include <AzToolsFramework/ViewportSelection/EditorSelectionUtil.h>
-#include <AzToolsFramework/Viewport/ViewportInteractionHelpers.h>
-
-#include <QApplication>
 
 namespace Hammer
 {
@@ -20,10 +23,9 @@ namespace Hammer
     HammerViewportManipulatorControllerInstance::HammerViewportManipulatorControllerInstance(
         AzFramework::ViewportId viewport, HammerViewportManipulatorController* controller)
         : AzFramework::MultiViewportControllerInstanceInterface<HammerViewportManipulatorController>(viewport, controller)
-        , m_viewportSettings(AZStd::make_unique<HammerEditorViewportSettings>(viewport, controller->GetActiveViewportTracker()))
+        , m_viewportSettings(AZStd::make_unique<HammerEditorViewportSettings>(viewport))
     {
         AZ_Assert(controller, "HammerViewportManipulatorControllerInstance constructed with a null controller");
-        AZ_Assert(m_viewportSettings, "HammerViewportManipulatorControllerInstance failed to allocate its HammerEditorViewportSettings");
         AzToolsFramework::ViewportInteraction::EditorEntityViewportInteractionRequestBus::Handler::BusConnect(viewport);
     }
 
@@ -39,149 +41,201 @@ namespace Hammer
 
     bool HammerViewportManipulatorControllerInstance::HandleInputChannelEvent(const AzFramework::ViewportControllerInputEvent& event)
     {
-        if (event.m_priority != ManipulatorPriority && event.m_priority != InteractionPriority)
-        {
-            return false;
-        }
+        bool interactionHandled = false;
+        const bool relevantPriority = event.m_priority == ManipulatorPriority || event.m_priority == InteractionPriority;
+        relevantPriority && (ProcessRelevantInputEvent(event, interactionHandled), true);
+        return interactionHandled;
+    }
 
-        using InteractionBus = AzToolsFramework::EditorInteractionSystemViewportSelectionRequestBus;
-        using AzFramework::InputChannel;
+    void HammerViewportManipulatorControllerInstance::ProcessRelevantInputEvent(
+        const AzFramework::ViewportControllerInputEvent& event, bool& interactionHandled)
+    {
+        using AzToolsFramework::ViewportInteraction::Helpers;
         using AzToolsFramework::ViewportInteraction::KeyboardModifier;
         using AzToolsFramework::ViewportInteraction::MouseButton;
         using AzToolsFramework::ViewportInteraction::MouseEvent;
-        using AzToolsFramework::ViewportInteraction::MouseInteraction;
-        using AzToolsFramework::ViewportInteraction::MouseInteractionEvent;
-        using AzToolsFramework::ViewportInteraction::ProjectedViewportRay;
-        using AzToolsFramework::ViewportInteraction::ViewportInteractionRequestBus;
-        using AzToolsFramework::ViewportInteraction::Helpers;
 
-        bool interactionHandled = false;
         float wheelDelta = 0.0f;
         AZStd::optional<MouseButton> overrideButton;
         AZStd::optional<MouseEvent> eventType;
 
         const bool finishedProcessingEvents = event.m_priority == InteractionPriority;
 
+        bool classified = false;
+
+        const bool isMouseMove = Helpers::IsMouseMove(event.m_inputChannel);
+        (!classified && isMouseMove) && (ClassifyMouseMove(event, eventType), classified = true, true);
+
+        const MouseButton mouseButton = Helpers::GetMouseButton(event.m_inputChannel);
+        (!classified && mouseButton != MouseButton::None) &&
+            (ClassifyMouseButton(event, mouseButton, finishedProcessingEvents, eventType, overrideButton), classified = true, true);
+
+        const KeyboardModifier keyboardModifier = Helpers::GetKeyboardModifier(event.m_inputChannel);
+        (!classified && keyboardModifier != KeyboardModifier::None) &&
+            (ClassifyKeyboardModifier(event, keyboardModifier), classified = true, true);
+
+        (!classified && event.m_inputChannel.GetInputChannelId() == AzFramework::InputDeviceMouse::Movement::Z) &&
+            (ClassifyWheel(event, eventType, wheelDelta), classified = true, true);
+
+        const bool isDownOrDoubleClick = eventType == MouseEvent::Down || eventType == MouseEvent::DoubleClick;
+        isDownOrDoubleClick && (RefreshEntityVisibilityCache(), true);
+
+        eventType.has_value() &&
+            (DispatchMouseInteractionEvent(event, eventType.value(), wheelDelta, overrideButton, interactionHandled), true);
+    }
+
+    void HammerViewportManipulatorControllerInstance::ClassifyMouseMove(
+        const AzFramework::ViewportControllerInputEvent& event,
+        AZStd::optional<AzToolsFramework::ViewportInteraction::MouseEvent>& eventType)
+    {
+        (event.m_priority == ManipulatorPriority) && (UpdateMousePick(event), true);
+        eventType = AzToolsFramework::ViewportInteraction::MouseEvent::Move;
+    }
+
+    void HammerViewportManipulatorControllerInstance::UpdateMousePick(const AzFramework::ViewportControllerInputEvent& event)
+    {
+        using AzToolsFramework::ViewportInteraction::ProjectedViewportRay;
+        using AzToolsFramework::ViewportInteraction::ViewportInteractionRequestBus;
+
+        const auto* position = event.m_inputChannel.GetCustomData<AzFramework::InputChannel::PositionData2D>();
+        AZ_Assert(position, "Expected PositionData2D but found nullptr");
+
+        AzFramework::WindowSize windowSize;
+        AzFramework::WindowRequestBus::EventResult(
+            windowSize, event.m_windowHandle, &AzFramework::WindowRequestBus::Events::GetRenderResolution);
+
+        const auto screenPoint = AzFramework::ScreenPoint(
+            aznumeric_cast<int>(position->m_normalizedPosition.GetX() * windowSize.m_width),
+            aznumeric_cast<int>(position->m_normalizedPosition.GetY() * windowSize.m_height));
+
+        ProjectedViewportRay ray{};
+        ViewportInteractionRequestBus::EventResult(
+            ray, GetViewportId(), &ViewportInteractionRequestBus::Events::ViewportScreenToWorldRay, screenPoint);
+
+        m_mouseInteraction.m_mousePick.m_rayOrigin = ray.m_origin;
+        m_mouseInteraction.m_mousePick.m_rayDirection = ray.m_direction;
+        m_mouseInteraction.m_mousePick.m_screenCoordinates = screenPoint;
+    }
+
+    void HammerViewportManipulatorControllerInstance::ClassifyMouseButton(
+        const AzFramework::ViewportControllerInputEvent& event, AzToolsFramework::ViewportInteraction::MouseButton mouseButton,
+        bool finishedProcessingEvents, AZStd::optional<AzToolsFramework::ViewportInteraction::MouseEvent>& eventType,
+        AZStd::optional<AzToolsFramework::ViewportInteraction::MouseButton>& overrideButton)
+    {
+        using AzFramework::InputChannel;
+
+        const AZ::u32 mouseButtonValue = static_cast<AZ::u32>(mouseButton);
+        overrideButton = mouseButton;
+
         const auto state = event.m_inputChannel.GetState();
-        if (Helpers::IsMouseMove(event.m_inputChannel))
-        {
-            if (event.m_priority == ManipulatorPriority)
+
+        (state == InputChannel::State::Began) &&
+            (OnMouseButtonBegan(mouseButton, mouseButtonValue, finishedProcessingEvents, eventType), true);
+
+        (state == InputChannel::State::Ended && (m_mouseInteraction.m_mouseButtons.m_mouseButtons & mouseButtonValue)) &&
+            (OnMouseButtonEnded(mouseButtonValue, finishedProcessingEvents, eventType), true);
+    }
+
+    void HammerViewportManipulatorControllerInstance::OnMouseButtonBegan(
+        AzToolsFramework::ViewportInteraction::MouseButton mouseButton, AZ::u32 mouseButtonValue, bool finishedProcessingEvents,
+        AZStd::optional<AzToolsFramework::ViewportInteraction::MouseEvent>& eventType)
+    {
+        using AzToolsFramework::ViewportInteraction::MouseEvent;
+
+        m_mouseInteraction.m_mouseButtons.m_mouseButtons |= mouseButtonValue;
+
+        const bool isDoubleClick = IsDoubleClick(mouseButton);
+        constexpr AZStd::array<MouseEvent, 2> DownEvents = { MouseEvent::Down, MouseEvent::DoubleClick };
+        eventType = DownEvents[static_cast<size_t>(isDoubleClick)];
+
+        finishedProcessingEvents && (UpdatePendingDoubleClick(mouseButton, isDoubleClick), true);
+    }
+
+    void HammerViewportManipulatorControllerInstance::UpdatePendingDoubleClick(
+        AzToolsFramework::ViewportInteraction::MouseButton mouseButton, bool isDoubleClick)
+    {
+        const AZStd::array<AZStd::function<void()>, 2> actions = {
+            [this, mouseButton]
             {
-                const auto* position = event.m_inputChannel.GetCustomData<AzFramework::InputChannel::PositionData2D>();
-                AZ_Assert(position, "Expected PositionData2D but found nullptr");
-
-                AzFramework::WindowSize windowSize;
-                AzFramework::WindowRequestBus::EventResult(
-                    windowSize, event.m_windowHandle, &AzFramework::WindowRequestBus::Events::GetRenderResolution);
-
-                const auto screenPoint = AzFramework::ScreenPoint(
-                    aznumeric_cast<int>(position->m_normalizedPosition.GetX() * windowSize.m_width),
-                    aznumeric_cast<int>(position->m_normalizedPosition.GetY() * windowSize.m_height));
-
-                ProjectedViewportRay ray{};
-                ViewportInteractionRequestBus::EventResult(
-                    ray, GetViewportId(), &ViewportInteractionRequestBus::Events::ViewportScreenToWorldRay, screenPoint);
-
-                m_mouseInteraction.m_mousePick.m_rayOrigin = ray.m_origin;
-                m_mouseInteraction.m_mousePick.m_rayDirection = ray.m_direction;
-                m_mouseInteraction.m_mousePick.m_screenCoordinates = screenPoint;
-            }
-
-            eventType = MouseEvent::Move;
-        }
-        else if (auto mouseButton = Helpers::GetMouseButton(event.m_inputChannel); mouseButton != MouseButton::None)
-        {
-            const AZ::u32 mouseButtonValue = static_cast<AZ::u32>(mouseButton);
-            overrideButton = mouseButton;
-            if (state == InputChannel::State::Began)
+                m_pendingDoubleClicks[mouseButton] = { m_currentTime, m_mouseInteraction.m_mousePick.m_screenCoordinates };
+            },
+            [this, mouseButton]
             {
-                m_mouseInteraction.m_mouseButtons.m_mouseButtons |= mouseButtonValue;
+                m_pendingDoubleClicks.erase(mouseButton);
+            },
+        };
+        actions[static_cast<size_t>(isDoubleClick)]();
+    }
 
-                const bool isDoubleClick = IsDoubleClick(mouseButton);
-                eventType = isDoubleClick ? MouseEvent::DoubleClick : MouseEvent::Down;
-                if (finishedProcessingEvents)
-                {
-                    if (isDoubleClick)
-                    {
-                        m_pendingDoubleClicks.erase(mouseButton);
-                    }
-                    else
-                    {
-                        m_pendingDoubleClicks[mouseButton] = { m_currentTime, m_mouseInteraction.m_mousePick.m_screenCoordinates };
-                    }
-                }
-            }
-            else if (state == InputChannel::State::Ended && (m_mouseInteraction.m_mouseButtons.m_mouseButtons & mouseButtonValue))
-            {
-                m_mouseInteraction.m_mouseButtons.m_mouseButtons &= ~(finishedProcessingEvents ? mouseButtonValue : 0u);
-                eventType = MouseEvent::Up;
-            }
-        }
-        else if (auto keyboardModifier = Helpers::GetKeyboardModifier(event.m_inputChannel); keyboardModifier != KeyboardModifier::None)
-        {
-            const AZ::u32 modifierBit = static_cast<AZ::u32>(keyboardModifier);
-            const bool modifierActive = state == InputChannel::State::Began || state == InputChannel::State::Updated;
-            const bool modifierEnded = state == InputChannel::State::Ended;
-            m_mouseInteraction.m_keyboardModifiers.m_keyModifiers =
-                (m_mouseInteraction.m_keyboardModifiers.m_keyModifiers | (modifierActive ? modifierBit : 0u)) &
-                ~(modifierEnded ? modifierBit : 0u);
-        }
-        else if (event.m_inputChannel.GetInputChannelId() == AzFramework::InputDeviceMouse::Movement::Z)
-        {
-            if (state == InputChannel::State::Began || state == InputChannel::State::Updated)
-            {
-                eventType = MouseEvent::Wheel;
-                wheelDelta = event.m_inputChannel.GetValue();
-            }
-        }
+    void HammerViewportManipulatorControllerInstance::OnMouseButtonEnded(
+        AZ::u32 mouseButtonValue, bool finishedProcessingEvents,
+        AZStd::optional<AzToolsFramework::ViewportInteraction::MouseEvent>& eventType)
+    {
+        m_mouseInteraction.m_mouseButtons.m_mouseButtons &= ~(mouseButtonValue * static_cast<AZ::u32>(finishedProcessingEvents));
+        eventType = AzToolsFramework::ViewportInteraction::MouseEvent::Up;
+    }
 
-        if (eventType == MouseEvent::Down || eventType == MouseEvent::DoubleClick)
-        {
-            RefreshEntityVisibilityCache();
-        }
+    void HammerViewportManipulatorControllerInstance::ClassifyKeyboardModifier(
+        const AzFramework::ViewportControllerInputEvent& event, AzToolsFramework::ViewportInteraction::KeyboardModifier keyboardModifier)
+    {
+        using AzFramework::InputChannel;
 
-        if (eventType)
-        {
-            MouseInteraction mouseInteraction = m_mouseInteraction;
-            if (overrideButton)
-            {
-                mouseInteraction.m_mouseButtons.m_mouseButtons = static_cast<AZ::u32>(overrideButton.value());
-            }
+        const AZ::u32 modifierBit = static_cast<AZ::u32>(keyboardModifier);
+        const auto state = event.m_inputChannel.GetState();
+        const bool modifierActive = state == InputChannel::State::Began || state == InputChannel::State::Updated;
+        const bool modifierEnded = state == InputChannel::State::Ended;
 
-            mouseInteraction.m_interactionId.m_viewportId = GetViewportId();
+        m_mouseInteraction.m_keyboardModifiers.m_keyModifiers =
+            (m_mouseInteraction.m_keyboardModifiers.m_keyModifiers | (modifierBit * static_cast<AZ::u32>(modifierActive))) &
+            ~(modifierBit * static_cast<AZ::u32>(modifierEnded));
+    }
 
-            const auto& targetInteractionEvent = event.m_priority == ManipulatorPriority
-                ? &InteractionBus::Events::InternalHandleMouseManipulatorInteraction
-                : &InteractionBus::Events::InternalHandleMouseViewportInteraction;
+    void HammerViewportManipulatorControllerInstance::ClassifyWheel(
+        const AzFramework::ViewportControllerInputEvent& event,
+        AZStd::optional<AzToolsFramework::ViewportInteraction::MouseEvent>& eventType, float& wheelDelta)
+    {
+        using AzFramework::InputChannel;
 
-            auto currentCursorState = AzFramework::SystemCursorState::Unknown;
-            AzFramework::InputSystemCursorRequestBus::EventResult(
-                currentCursorState, event.m_inputChannel.GetInputDevice().GetInputDeviceId(),
-                &AzFramework::InputSystemCursorRequestBus::Events::GetSystemCursorState);
+        const auto state = event.m_inputChannel.GetState();
+        const bool active = state == InputChannel::State::Began || state == InputChannel::State::Updated;
 
-            const auto mouseInteractionEvent = [mouseInteraction, event = eventType.value(), wheelDelta,
-                                                cursorCaptured = currentCursorState == AzFramework::SystemCursorState::ConstrainedAndHidden]
-            {
-                switch (event)
-                {
-                case MouseEvent::Up:
-                case MouseEvent::Down:
-                case MouseEvent::Move:
-                case MouseEvent::DoubleClick:
-                    return MouseInteractionEvent(AZStd::move(mouseInteraction), event, cursorCaptured);
-                case MouseEvent::Wheel:
-                    return MouseInteractionEvent(AZStd::move(mouseInteraction), wheelDelta);
-                }
+        active && (eventType = AzToolsFramework::ViewportInteraction::MouseEvent::Wheel, true);
+        active && (wheelDelta = event.m_inputChannel.GetValue(), true);
+    }
 
-                AZ_Assert(false, "Unhandled MouseEvent");
-                return MouseInteractionEvent(MouseInteraction{}, MouseEvent::Up, false);
-            }();
+    void HammerViewportManipulatorControllerInstance::DispatchMouseInteractionEvent(
+        const AzFramework::ViewportControllerInputEvent& event, AzToolsFramework::ViewportInteraction::MouseEvent eventType,
+        float wheelDelta, const AZStd::optional<AzToolsFramework::ViewportInteraction::MouseButton>& overrideButton,
+        bool& interactionHandled)
+    {
+        using InteractionBus = AzToolsFramework::EditorInteractionSystemViewportSelectionRequestBus;
+        using AzToolsFramework::ViewportInteraction::MouseInteraction;
+        using AzToolsFramework::ViewportInteraction::MouseInteractionEvent;
 
-            InteractionBus::EventResult(
-                interactionHandled, AzToolsFramework::GetEntityContextId(), targetInteractionEvent, mouseInteractionEvent);
-        }
+        MouseInteraction mouseInteraction = m_mouseInteraction;
+        overrideButton.has_value() &&
+            (mouseInteraction.m_mouseButtons.m_mouseButtons = static_cast<AZ::u32>(overrideButton.value()), true);
+        mouseInteraction.m_interactionId.m_viewportId = GetViewportId();
 
-        return interactionHandled;
+        using TargetMemberPtr = decltype(&InteractionBus::Events::InternalHandleMouseManipulatorInteraction);
+        const AZStd::array<TargetMemberPtr, 2> targets = { &InteractionBus::Events::InternalHandleMouseViewportInteraction,
+                                                            &InteractionBus::Events::InternalHandleMouseManipulatorInteraction };
+        const auto targetInteractionEvent = targets[static_cast<size_t>(event.m_priority == ManipulatorPriority)];
+
+        auto currentCursorState = AzFramework::SystemCursorState::Unknown;
+        AzFramework::InputSystemCursorRequestBus::EventResult(
+            currentCursorState, event.m_inputChannel.GetInputDevice().GetInputDeviceId(),
+            &AzFramework::InputSystemCursorRequestBus::Events::GetSystemCursorState);
+        const bool cursorCaptured = currentCursorState == AzFramework::SystemCursorState::ConstrainedAndHidden;
+
+        const bool isWheel = eventType == AzToolsFramework::ViewportInteraction::MouseEvent::Wheel;
+        const AZStd::array<MouseInteractionEvent, 2> candidateEvents = {
+            MouseInteractionEvent(mouseInteraction, eventType, cursorCaptured),
+            MouseInteractionEvent(mouseInteraction, wheelDelta),
+        };
+        const MouseInteractionEvent& mouseInteractionEvent = candidateEvents[static_cast<size_t>(isWheel)];
+
+        InteractionBus::EventResult(interactionHandled, AzToolsFramework::GetEntityContextId(), targetInteractionEvent, mouseInteractionEvent);
     }
 
     void HammerViewportManipulatorControllerInstance::ResetInputChannels()
@@ -206,27 +260,30 @@ namespace Hammer
     {
         AzFramework::DebugDisplayRequestBus::BusPtr debugDisplayBus;
         AzFramework::DebugDisplayRequestBus::Bind(debugDisplayBus, GetViewportId());
-        if (AzFramework::DebugDisplayRequests* debugDisplay = AzFramework::DebugDisplayRequestBus::FindFirstHandler(debugDisplayBus))
-        {
-            AzFramework::ViewportDebugDisplayEventBus::Event(
-                AzToolsFramework::GetEntityContextId(), &AzFramework::ViewportDebugDisplayEvents::DisplayViewport,
-                AzFramework::ViewportInfo{ GetViewportId() }, *debugDisplay);
-        }
+        AzFramework::DebugDisplayRequests* debugDisplay = AzFramework::DebugDisplayRequestBus::FindFirstHandler(debugDisplayBus);
+        debugDisplay &&
+            (AzFramework::ViewportDebugDisplayEventBus::Event(
+                 AzToolsFramework::GetEntityContextId(), &AzFramework::ViewportDebugDisplayEvents::DisplayViewport,
+                 AzFramework::ViewportInfo{ GetViewportId() }, *debugDisplay),
+             true);
     }
 
     bool HammerViewportManipulatorControllerInstance::IsDoubleClick(AzToolsFramework::ViewportInteraction::MouseButton button) const
     {
-        if (auto clickIt = m_pendingDoubleClicks.find(button); clickIt != m_pendingDoubleClicks.end())
-        {
-            const double doubleClickThresholdMilliseconds = qApp->doubleClickInterval();
-            const bool insideTimeThreshold =
-                (m_currentTime.GetMilliseconds() - clickIt->second.m_time.GetMilliseconds()) < doubleClickThresholdMilliseconds;
-            const bool insideDistanceThreshold =
-                AzFramework::ScreenVectorLength(clickIt->second.m_position - m_mouseInteraction.m_mousePick.m_screenCoordinates) <
-                AzFramework::DefaultMouseMoveDeadZone;
-            return insideTimeThreshold && insideDistanceThreshold;
-        }
+        const auto clickIt = m_pendingDoubleClicks.find(button);
+        const bool found = clickIt != m_pendingDoubleClicks.end();
 
-        return false;
+        bool insideTimeThreshold = false;
+        bool insideDistanceThreshold = false;
+        found &&
+            (insideTimeThreshold =
+                 (m_currentTime.GetMilliseconds() - clickIt->second.m_time.GetMilliseconds()) <
+                 AZ::Interface<IHammerQtEnvironment>::Get()->DoubleClickIntervalMs(),
+             insideDistanceThreshold =
+                 AzFramework::ScreenVectorLength(clickIt->second.m_position - m_mouseInteraction.m_mousePick.m_screenCoordinates) <
+                 AzFramework::DefaultMouseMoveDeadZone,
+             true);
+
+        return found && insideTimeThreshold && insideDistanceThreshold;
     }
 }

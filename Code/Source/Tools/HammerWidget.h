@@ -1,11 +1,8 @@
-
 #pragma once
 
 #if !defined(Q_MOC_RUN)
 #include <QWidget>
 #endif
-
-#include <AzCore/std/smart_ptr/shared_ptr.h>
 
 namespace AtomToolsFramework
 {
@@ -19,14 +16,12 @@ class QObject;
 
 namespace Hammer
 {
-    class ActiveViewportTracker;
-
     class HammerWidget
         : public QWidget
     {
     Q_OBJECT
     public:
-        HammerWidget(QWidget* parent, AZStd::shared_ptr<ActiveViewportTracker> activeViewportTracker);
+        explicit HammerWidget(QWidget* parent);
         ~HammerWidget() override = default;
 
         AtomToolsFramework::RenderViewportWidget* GetViewportWidget() const
@@ -47,11 +42,11 @@ namespace Hammer
 
     private:
         void InitializeSceneIfReady();
+        void InitializeScene();
         void ApplyActiveState();
         void ApplyRenderTickState();
 
         AtomToolsFramework::RenderViewportWidget* m_viewportWidget = nullptr;
-        AZStd::shared_ptr<ActiveViewportTracker> m_activeViewportTracker;
         bool m_sceneInitialized = false;
         bool m_active = false;
         bool m_renderTickEnabled = true;
