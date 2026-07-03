@@ -4,10 +4,15 @@
 #include <Clients/HammerSystemComponent.h>
 
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
+#include <AzToolsFramework/ActionManager/ActionManagerRegistrationNotificationBus.h>
+
+#include <AzCore/std/containers/vector.h>
 
 #include <QPointer>
 
 class QDockWidget;
+class QMainWindow;
+class QToolButton;
 
 namespace Hammer
 {
@@ -16,6 +21,7 @@ namespace Hammer
     class HammerEditorSystemComponent
         : public HammerSystemComponent
         , protected AzToolsFramework::EditorEvents::Bus::Handler
+        , protected AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler
     {
         using BaseSystemComponent = HammerSystemComponent;
     public:
@@ -38,11 +44,16 @@ namespace Hammer
         void NotifyRegisterViews() override;
         void NotifyEditorInitialized() override;
 
+        void OnActionRegistrationHook() override;
+
         void RegisterViewportPane();
         void EmbedViewportInCenter();
+        void CreateViewportCountButtons();
+        void DestroyViewportCountButtons();
 
         QPointer<HammerViewportLayoutWidget> m_viewportLayoutWidget;
         QPointer<QDockWidget> m_paneDockWidget;
+        AZStd::vector<QPointer<QToolButton>> m_viewportCountButtons;
         class ViewportSizeFilter* m_viewportFilter = nullptr;
         bool m_originalIconsVisiblePreference = true;
     };

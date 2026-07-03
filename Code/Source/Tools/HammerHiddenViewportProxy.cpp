@@ -2,6 +2,7 @@
 #include "HammerQtWidgetUtils.h"
 #include "HammerWidget.h"
 
+#include <Atom/RPI.Public/RenderPipeline.h>
 #include <Atom/RPI.Public/ViewportContext.h>
 #include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
@@ -76,6 +77,11 @@ namespace Hammer
             if (activeContext)
             {
                 m_hiddenRealViewportContext->SetCameraTransform(activeContext->GetCameraTransform());
+            }
+
+            if (AZ::RPI::RenderPipelinePtr pipeline = m_hiddenRealViewportContext->GetCurrentPipeline())
+            {
+                pipeline->RemoveFromRenderTick();
             }
         }
 

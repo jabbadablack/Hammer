@@ -86,6 +86,15 @@ namespace Hammer
         }
     }
 
+    void HammerWidget::SetRenderTickEnabled(bool enabled)
+    {
+        m_renderTickEnabled = enabled;
+        if (m_sceneInitialized && m_viewportWidget)
+        {
+            ApplyRenderTickState();
+        }
+    }
+
     void HammerWidget::ApplyActiveState()
     {
         m_viewportWidget->SetInputProcessingEnabled(m_active);
@@ -152,5 +161,24 @@ namespace Hammer
         m_viewportWidget->GetControllerList()->Add(AZStd::make_shared<HammerViewportManipulatorController>(m_activeViewportTracker));
 
         ApplyActiveState();
+        ApplyRenderTickState();
+    }
+
+    void HammerWidget::ApplyRenderTickState()
+    {
+        if (AZ::RPI::ViewportContextPtr viewportContext = m_viewportWidget->GetViewportContext())
+        {
+            if (AZ::RPI::RenderPipelinePtr pipeline = viewportContext->GetCurrentPipeline())
+            {
+                if (m_renderTickEnabled)
+                {
+                    pipeline->AddToRenderTick();
+                }
+                else
+                {
+                    pipeline->RemoveFromRenderTick();
+                }
+            }
+        }
     }
 }

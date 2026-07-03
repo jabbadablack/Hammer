@@ -4,10 +4,16 @@
 
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
 #include <AzToolsFramework/API/ViewPaneOptions.h>
+#include <AzToolsFramework/ActionManager/Action/ActionManagerInterface.h>
+#include <AzToolsFramework/ActionManager/HotKey/HotKeyManagerInterface.h>
+#include <AzToolsFramework/Editor/ActionManagerIdentifiers/EditorContextIdentifiers.h>
 
 #include <QDockWidget>
+#include <QIcon>
 #include <QMainWindow>
 #include <QSettings>
+#include <QStatusBar>
+#include <QToolButton>
 #include <QWidget>
 #include <QCoreApplication>
 #include <QEvent>
@@ -134,10 +140,16 @@ namespace Hammer
     {
         HammerSystemComponent::Activate();
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
+        AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusConnect();
 
         QSettings settings("O3DE", "O3DE");
-        settings.remove("ViewportLayout");
-        settings.remove("Editor/fancyWindowLayouts/last");
+        constexpr const char* MigratedStaleLayoutKey = "HammerGem/migratedStaleLayoutOnce";
+        if (!settings.value(MigratedStaleLayoutKey, false).toBool())
+        {
+            settings.remove("ViewportLayout");
+            settings.remove("Editor/fancyWindowLayouts/last");
+            settings.setValue(MigratedStaleLayoutKey, true);
+        }
 
         m_originalIconsVisiblePreference = AzToolsFramework::IconsVisible();
         AzToolsFramework::SetIconsVisible(false);
@@ -146,6 +158,8 @@ namespace Hammer
     void HammerEditorSystemComponent::Deactivate()
     {
         AzToolsFramework::SetIconsVisible(m_originalIconsVisiblePreference);
+
+        DestroyViewportCountButtons();
 
         if (m_viewportFilter)
         {
@@ -168,6 +182,7 @@ namespace Hammer
         m_paneDockWidget = nullptr;
         m_viewportLayoutWidget = nullptr;
 
+        AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusDisconnect();
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
         HammerSystemComponent::Deactivate();
     }
@@ -186,6 +201,68 @@ namespace Hammer
         }
 
         EmbedViewportInCenter();
+        CreateViewportCountButtons();
+    }
+
+    void HammerEditorSystemComponent::OnActionRegistrationHook()
+    {
+        auto* actionManagerInterface = AZ::Interface<AzToolsFramework::ActionManagerInterface>::Get();
+        auto* hotKeyManagerInterface = AZ::Interface<AzToolsFramework::HotKeyManagerInterface>::Get();
+        AZ_Error("HammerEditorSystemComponent", actionManagerInterface, "Could not find AzToolsFramework::ActionManagerInterface");
+        AZ_Error("HammerEditorSystemComponent", hotKeyManagerInterface, "Could not find AzToolsFramework::HotKeyManagerInterface");
+        if (!actionManagerInterface || !hotKeyManagerInterface)
+        {
+            return;
+        }
+
+        struct HotkeyDef
+        {
+            const char* m_id;
+            const char* m_name;
+            const char* m_hotkey;
+            int m_count;
+        };
+        constexpr HotkeyDef layoutHotkeys[] = {
+            { "o3de.action.hammer.viewportLayoutSingle", "Single Viewport", "Ctrl+1", 1 },
+            { "o3de.action.hammer.viewportLayoutDual", "Dual Viewport", "Ctrl+2", 2 },
+            { "o3de.action.hammer.viewportLayoutQuad", "Quad Viewport", "Ctrl+3", 4 },
+        };
+
+        for (const HotkeyDef& def : layoutHotkeys)
+        {
+            AzToolsFramework::ActionProperties actionProperties;
+            actionProperties.m_name = def.m_name;
+            actionProperties.m_description = AZStd::string::format("Switch Hammer to the %s layout", def.m_name);
+            actionProperties.m_category = "Viewport";
+
+            actionManagerInterface->RegisterAction(
+                EditorIdentifiers::MainWindowActionContextIdentifier, def.m_id, actionProperties,
+                [this, count = def.m_count]
+                {
+                    if (m_viewportLayoutWidget)
+                    {
+                        m_viewportLayoutWidget->SetViewportCount(count);
+                    }
+                });
+            hotKeyManagerInterface->SetActionHotKey(def.m_id, def.m_hotkey);
+        }
+
+        constexpr AZStd::string_view maximizeId = "o3de.action.hammer.viewportToggleMaximize";
+        AzToolsFramework::ActionProperties maximizeProperties;
+        maximizeProperties.m_name = "Toggle Maximize Viewport";
+        maximizeProperties.m_description = "Maximize or restore the currently active Hammer viewport";
+        maximizeProperties.m_category = "Viewport";
+
+        actionManagerInterface->RegisterAction(
+            EditorIdentifiers::MainWindowActionContextIdentifier, maximizeId, maximizeProperties,
+            [this]
+            {
+                if (m_viewportLayoutWidget)
+                {
+                    m_viewportLayoutWidget->ToggleMaximizeActiveViewport();
+                }
+            });
+        hotKeyManagerInterface->SetActionHotKey(maximizeId, "Ctrl+4");
     }
 
     void HammerEditorSystemComponent::RegisterViewportPane()
@@ -201,6 +278,16 @@ namespace Hammer
             viewOptions,
             [this](QWidget* parent) -> QWidget*
             {
+                if (m_viewportLayoutWidget)
+                {
+                    AZ_Warning(
+                        "HammerEditorSystemComponent", false,
+                        "The '%s' view pane's widget was requested a second time; returning a placeholder instead "
+                        "of constructing a duplicate HammerViewportLayoutWidget",
+                        ViewportPaneName);
+                    return new QWidget(parent);
+                }
+
                 m_viewportLayoutWidget = new HammerViewportLayoutWidget(parent);
                 AZ_Assert(m_viewportLayoutWidget, "Failed to allocate HammerViewportLayoutWidget");
                 return m_viewportLayoutWidget;
@@ -287,6 +374,92 @@ namespace Hammer
 
         AZ_Assert(m_viewportLayoutWidget, "m_viewportLayoutWidget is null after being validated as 'content' above");
         m_viewportLayoutWidget->SetHiddenRealViewport(oldViewport);
+    }
+
+    void HammerEditorSystemComponent::CreateViewportCountButtons()
+    {
+        if (!m_viewportLayoutWidget)
+        {
+            return;
+        }
+
+        QWidget* mainWindowWidget = nullptr;
+        AzToolsFramework::EditorRequestBus::BroadcastResult(mainWindowWidget, &AzToolsFramework::EditorRequests::GetMainWindow);
+        auto* editorMainWindow = qobject_cast<QMainWindow*>(mainWindowWidget);
+        AZ_Error(
+            "HammerEditorSystemComponent", editorMainWindow, "Could not find the Editor's main QMainWindow to host viewport-count buttons");
+        if (!editorMainWindow)
+        {
+            return;
+        }
+
+        QStatusBar* statusBar = editorMainWindow->statusBar();
+        AZ_Error("HammerEditorSystemComponent", statusBar, "Editor main window has no status bar");
+        if (!statusBar)
+        {
+            return;
+        }
+
+        for (int count : { 1, 2, 4 })
+        {
+            const QString iconPath = count == 1 ? QStringLiteral(":/Hammer/single-view.svg")
+                : count == 2                    ? QStringLiteral(":/Hammer/duo-view.svg")
+                                                 : QStringLiteral(":/Hammer/quad-view.svg");
+
+            QToolButton* button = new QToolButton(statusBar);
+            button->setIcon(QIcon(iconPath));
+            button->setIconSize(QSize(16, 16));
+            button->setCheckable(true);
+            button->setAutoRaise(true);
+            button->setChecked(count == 1);
+            button->setToolTip(QObject::tr("%1 Viewport%2").arg(count).arg(count > 1 ? "s" : ""));
+
+            QPointer<HammerViewportLayoutWidget> layoutWidget = m_viewportLayoutWidget;
+            QObject::connect(
+                button, &QToolButton::clicked, button,
+                [layoutWidget, count]
+                {
+                    if (layoutWidget)
+                    {
+                        layoutWidget->SetViewportCount(count);
+                    }
+                });
+
+            statusBar->addPermanentWidget(button);
+            m_viewportCountButtons.push_back(button);
+        }
+
+        QObject::connect(
+            m_viewportLayoutWidget, &HammerViewportLayoutWidget::ViewportCountChanged, m_viewportLayoutWidget,
+            [this](int count)
+            {
+                int buttonIndex = 0;
+                for (int buttonCount : { 1, 2, 4 })
+                {
+                    if (buttonIndex < static_cast<int>(m_viewportCountButtons.size()) && m_viewportCountButtons[buttonIndex])
+                    {
+                        m_viewportCountButtons[buttonIndex]->setChecked(buttonCount == count);
+                    }
+                    ++buttonIndex;
+                }
+            });
+    }
+
+    void HammerEditorSystemComponent::DestroyViewportCountButtons()
+    {
+        if (m_viewportLayoutWidget)
+        {
+            QObject::disconnect(m_viewportLayoutWidget, &HammerViewportLayoutWidget::ViewportCountChanged, m_viewportLayoutWidget, nullptr);
+        }
+
+        for (QPointer<QToolButton>& button : m_viewportCountButtons)
+        {
+            if (button)
+            {
+                delete button;
+            }
+        }
+        m_viewportCountButtons.clear();
     }
 
 } // namespace Hammer

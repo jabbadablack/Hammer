@@ -35,6 +35,7 @@ namespace Hammer
         }
 
         void SetActive(bool active);
+        void SetRenderTickEnabled(bool enabled);
 
     Q_SIGNALS:
         void ViewportFocusRequested();
@@ -47,10 +48,12 @@ namespace Hammer
     private:
         void InitializeSceneIfReady();
         void ApplyActiveState();
+        void ApplyRenderTickState();
 
         AtomToolsFramework::RenderViewportWidget* m_viewportWidget = nullptr;
         AZStd::shared_ptr<ActiveViewportTracker> m_activeViewportTracker;
         bool m_sceneInitialized = false;
         bool m_active = false;
+        bool m_renderTickEnabled = true;
     };
 }

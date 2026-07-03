@@ -22,7 +22,7 @@ namespace Hammer
 
     bool HammerEditorViewportSettings::GridSnappingEnabled() const
     {
-        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/GridSnapping", false);
+        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/GridSnapping", true);
     }
 
     float HammerEditorViewportSettings::GridSize() const
