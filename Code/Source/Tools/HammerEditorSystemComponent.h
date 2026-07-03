@@ -5,10 +5,13 @@
 
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 
+#include <AzCore/std/containers/vector.h>
+
 #include <QPointer>
 
 class QDockWidget;
 class QMainWindow;
+class QToolButton;
 
 namespace Hammer
 {
@@ -41,9 +44,12 @@ namespace Hammer
 
         void RegisterViewportPane();
         void EmbedViewportInCenter();
+        void CreateViewportCountButtons();
+        void DestroyViewportCountButtons();
 
         QPointer<HammerViewportLayoutWidget> m_viewportLayoutWidget;
         QPointer<QDockWidget> m_paneDockWidget;
+        AZStd::vector<QPointer<QToolButton>> m_viewportCountButtons;
         class ViewportSizeFilter* m_viewportFilter = nullptr;
         bool m_originalIconsVisiblePreference = true;
     };

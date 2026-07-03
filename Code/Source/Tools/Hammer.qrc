@@ -1,5 +1,8 @@
 <!DOCTYPE RCC><RCC version="1.0">
     <qresource prefix="/Hammer">
         <file alias="toolbar_icon.svg">toolbar_icon.svg</file>
+        <file alias="single-view.svg">../../../Assets/Icons/single-view.svg</file>
+        <file alias="duo-view.svg">../../../Assets/Icons/duo-view.svg</file>
+        <file alias="quad-view.svg">../../../Assets/Icons/quad-view.svg</file>
     </qresource>
 </RCC>

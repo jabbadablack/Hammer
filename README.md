@@ -8,6 +8,7 @@ Hammer is an O3DE gem initially inspired by Valve's Source engine editor. it is 
 - [ ] Orthogonal toggle.
 - [ ] Independent game launcher window.
 - [ ] Dynamic pane layout resizing.
+- [ ] Ability to maximize select viewpanes.
 - [ ] Facing Hotkeys.
     - [ ] Quick snap gizmo.
     - [ ] Focus snapping - Automatic.

@@ -6,9 +6,6 @@
 #include <AzCore/std/algorithm.h>
 
 #include <QGridLayout>
-#include <QHBoxLayout>
-#include <QLabel>
-#include <QPushButton>
 #include <QVBoxLayout>
 
 namespace Hammer
@@ -20,20 +17,6 @@ namespace Hammer
         QVBoxLayout* outerLayout = new QVBoxLayout(this);
         outerLayout->setContentsMargins(0, 0, 0, 0);
         outerLayout->setSpacing(0);
-
-        QHBoxLayout* toolbarLayout = new QHBoxLayout();
-        toolbarLayout->addWidget(new QLabel(tr("Viewports:"), this));
-        for (int count : { 1, 2, 4 })
-        {
-            QPushButton* button = new QPushButton(QString::number(count), this);
-            button->setCheckable(true);
-            button->setFixedWidth(24);
-            connect(button, &QPushButton::clicked, this, [this, count] { SetViewportCount(count); });
-            toolbarLayout->addWidget(button);
-            m_countButtons.push_back(button);
-        }
-        toolbarLayout->addStretch();
-        outerLayout->addLayout(toolbarLayout);
 
         m_gridContainer = new QWidget(this);
         m_gridLayout = new QGridLayout(m_gridContainer);
@@ -98,12 +81,7 @@ namespace Hammer
             m_viewports[i]->SetRenderTickEnabled(true);
         }
 
-        int buttonIndex = 0;
-        for (int buttonCount : { 1, 2, 4 })
-        {
-            m_countButtons[buttonIndex]->setChecked(buttonCount == count);
-            ++buttonIndex;
-        }
+        emit ViewportCountChanged(count);
     }
 
     void HammerViewportLayoutWidget::SetHiddenRealViewport(QWidget* realViewport)

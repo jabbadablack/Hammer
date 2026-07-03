@@ -6,8 +6,11 @@
 #include <AzToolsFramework/API/ViewPaneOptions.h>
 
 #include <QDockWidget>
+#include <QIcon>
 #include <QMainWindow>
 #include <QSettings>
+#include <QStatusBar>
+#include <QToolButton>
 #include <QWidget>
 #include <QCoreApplication>
 #include <QEvent>
@@ -152,6 +155,8 @@ namespace Hammer
     {
         AzToolsFramework::SetIconsVisible(m_originalIconsVisiblePreference);
 
+        DestroyViewportCountButtons();
+
         if (m_viewportFilter)
         {
             if (qApp)
@@ -191,6 +196,7 @@ namespace Hammer
         }
 
         EmbedViewportInCenter();
+        CreateViewportCountButtons();
     }
 
     void HammerEditorSystemComponent::RegisterViewportPane()
@@ -206,6 +212,16 @@ namespace Hammer
             viewOptions,
             [this](QWidget* parent) -> QWidget*
             {
+                if (m_viewportLayoutWidget)
+                {
+                    AZ_Warning(
+                        "HammerEditorSystemComponent", false,
+                        "The '%s' view pane's widget was requested a second time; returning a placeholder instead "
+                        "of constructing a duplicate HammerViewportLayoutWidget",
+                        ViewportPaneName);
+                    return new QWidget(parent);
+                }
+
                 m_viewportLayoutWidget = new HammerViewportLayoutWidget(parent);
                 AZ_Assert(m_viewportLayoutWidget, "Failed to allocate HammerViewportLayoutWidget");
                 return m_viewportLayoutWidget;
@@ -292,6 +308,92 @@ namespace Hammer
 
         AZ_Assert(m_viewportLayoutWidget, "m_viewportLayoutWidget is null after being validated as 'content' above");
         m_viewportLayoutWidget->SetHiddenRealViewport(oldViewport);
+    }
+
+    void HammerEditorSystemComponent::CreateViewportCountButtons()
+    {
+        if (!m_viewportLayoutWidget)
+        {
+            return;
+        }
+
+        QWidget* mainWindowWidget = nullptr;
+        AzToolsFramework::EditorRequestBus::BroadcastResult(mainWindowWidget, &AzToolsFramework::EditorRequests::GetMainWindow);
+        auto* editorMainWindow = qobject_cast<QMainWindow*>(mainWindowWidget);
+        AZ_Error(
+            "HammerEditorSystemComponent", editorMainWindow, "Could not find the Editor's main QMainWindow to host viewport-count buttons");
+        if (!editorMainWindow)
+        {
+            return;
+        }
+
+        QStatusBar* statusBar = editorMainWindow->statusBar();
+        AZ_Error("HammerEditorSystemComponent", statusBar, "Editor main window has no status bar");
+        if (!statusBar)
+        {
+            return;
+        }
+
+        for (int count : { 1, 2, 4 })
+        {
+            const QString iconPath = count == 1 ? QStringLiteral(":/Hammer/single-view.svg")
+                : count == 2                    ? QStringLiteral(":/Hammer/duo-view.svg")
+                                                 : QStringLiteral(":/Hammer/quad-view.svg");
+
+            QToolButton* button = new QToolButton(statusBar);
+            button->setIcon(QIcon(iconPath));
+            button->setIconSize(QSize(16, 16));
+            button->setCheckable(true);
+            button->setAutoRaise(true);
+            button->setChecked(count == 1);
+            button->setToolTip(QObject::tr("%1 Viewport%2").arg(count).arg(count > 1 ? "s" : ""));
+
+            QPointer<HammerViewportLayoutWidget> layoutWidget = m_viewportLayoutWidget;
+            QObject::connect(
+                button, &QToolButton::clicked, button,
+                [layoutWidget, count]
+                {
+                    if (layoutWidget)
+                    {
+                        layoutWidget->SetViewportCount(count);
+                    }
+                });
+
+            statusBar->addPermanentWidget(button);
+            m_viewportCountButtons.push_back(button);
+        }
+
+        QObject::connect(
+            m_viewportLayoutWidget, &HammerViewportLayoutWidget::ViewportCountChanged, m_viewportLayoutWidget,
+            [this](int count)
+            {
+                int buttonIndex = 0;
+                for (int buttonCount : { 1, 2, 4 })
+                {
+                    if (buttonIndex < static_cast<int>(m_viewportCountButtons.size()) && m_viewportCountButtons[buttonIndex])
+                    {
+                        m_viewportCountButtons[buttonIndex]->setChecked(buttonCount == count);
+                    }
+                    ++buttonIndex;
+                }
+            });
+    }
+
+    void HammerEditorSystemComponent::DestroyViewportCountButtons()
+    {
+        if (m_viewportLayoutWidget)
+        {
+            QObject::disconnect(m_viewportLayoutWidget, &HammerViewportLayoutWidget::ViewportCountChanged, m_viewportLayoutWidget, nullptr);
+        }
+
+        for (QPointer<QToolButton>& button : m_viewportCountButtons)
+        {
+            if (button)
+            {
+                delete button;
+            }
+        }
+        m_viewportCountButtons.clear();
     }
 
 } // namespace Hammer
