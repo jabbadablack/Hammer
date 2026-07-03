@@ -86,6 +86,7 @@ namespace Hammer
         {
             m_gridLayout->removeWidget(viewport);
             viewport->hide();
+            viewport->SetRenderTickEnabled(false);
         }
 
         const int columns = count <= 1 ? 1 : 2;
@@ -94,6 +95,7 @@ namespace Hammer
         {
             m_gridLayout->addWidget(m_viewports[i], i / columns, i % columns);
             m_viewports[i]->show();
+            m_viewports[i]->SetRenderTickEnabled(true);
         }
 
         int buttonIndex = 0;
