@@ -32,11 +32,6 @@ namespace Hammer
 
         static HammerWidget* CreateAdopting(QWidget* parent, QWidget& realViewport);
 
-        AtomToolsFramework::RenderViewportWidget* GetViewportWidget() const
-        {
-            return m_viewportWidget;
-        }
-
         void SetActive(bool active);
         void SetRenderTickEnabled(bool enabled);
 

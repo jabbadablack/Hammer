@@ -1,6 +1,4 @@
-#include "HammerQtEnvironmentAdapter.h"
-
-#include "../HammerOptionalUtils.h"
+#include "HammerQtEnvironment.h"
 
 #include <AzCore/std/algorithm.h>
 #include <AzCore/std/containers/array.h>
@@ -16,12 +14,10 @@ namespace Hammer
 {
     namespace
     {
-        constexpr AZStd::array<AZStd::string_view, 4> DirectViewportClassNames = {
-            "EditorViewportWidget", "HammerWidget", "HammerViewportLayoutWidget", "HammerRenderViewportWidget"
+        constexpr AZStd::array<AZStd::string_view, 3> DirectViewportClassNames = {
+            "HammerWidget", "HammerViewportLayoutWidget", "HammerRenderViewportWidget"
         };
-        constexpr AZStd::array<AZStd::string_view, 3> ParentViewportClassNames = {
-            "EditorViewportWidget", "HammerWidget", "HammerViewportLayoutWidget"
-        };
+        constexpr AZStd::array<AZStd::string_view, 2> ParentViewportClassNames = { "HammerWidget", "HammerViewportLayoutWidget" };
 
         template<size_t N>
         bool ClassNameMatches(AZStd::string_view className, const AZStd::array<AZStd::string_view, N>& names)
@@ -61,7 +57,7 @@ namespace Hammer
                 {
                     return AZStd::string_view(child->metaObject()->className()) == className;
                 });
-            return OptionalUtils::ToOptional(it, children.end()).value_or(nullptr);
+            return it != children.end() ? *it : nullptr;
         }
 
         // dynamic_cast, not azdynamic_cast: T here is a plain Qt/AtomToolsFramework widget type
@@ -77,67 +73,57 @@ namespace Hammer
                 {
                     return dynamic_cast<T*>(child) != nullptr;
                 });
-            return dynamic_cast<T*>(OptionalUtils::ToOptional(it, children.end()).value_or(nullptr));
+            return it != children.end() ? dynamic_cast<T*>(*it) : nullptr;
         }
+
+        class MinimumSizeGuardFilter : public QObject
+        {
+        public:
+            using QObject::QObject;
+
+        protected:
+            bool eventFilter(QObject* obj, QEvent* event) override
+            {
+                QWidget* widget = nullptr;
+                (obj && obj->isWidgetType()) && (widget = static_cast<QWidget*>(obj), true);
+                (widget && IsViewportLikeWidget(*widget)) && (ClampMinimumViewportSize(*widget), true);
+                return QObject::eventFilter(obj, event);
+            }
+        };
+
+        MinimumSizeGuardFilter* g_filter = nullptr;
     } // namespace
 
-    class HammerQtEnvironmentAdapter::MinimumSizeGuardFilter : public QObject
+    void InstallMinimumSizeGuard()
     {
-    public:
-        using QObject::QObject;
-
-    protected:
-        bool eventFilter(QObject* obj, QEvent* event) override
-        {
-            QWidget* widget = nullptr;
-            (obj && obj->isWidgetType()) && (widget = static_cast<QWidget*>(obj), true);
-            (widget && IsViewportLikeWidget(*widget)) && (ClampMinimumViewportSize(*widget), true);
-            return QObject::eventFilter(obj, event);
-        }
-    };
-
-    HammerQtEnvironmentAdapter::HammerQtEnvironmentAdapter()
-    {
-        AZ_Assert(qApp, "HammerQtEnvironmentAdapter constructed before a QApplication exists");
-        AZ_Assert(!m_filter, "HammerQtEnvironmentAdapter constructed with a pre-existing size-guard filter");
-    }
-
-    HammerQtEnvironmentAdapter::~HammerQtEnvironmentAdapter()
-    {
-        AZ_Assert(!m_filter, "HammerQtEnvironmentAdapter destroyed without RemoveMinimumSizeGuard being called first");
-        RemoveMinimumSizeGuard();
-    }
-
-    void HammerQtEnvironmentAdapter::InstallMinimumSizeGuard()
-    {
-        AZ_Assert(!m_filter, "InstallMinimumSizeGuard called while a size-guard filter is already installed");
+        AZ_Assert(!g_filter, "InstallMinimumSizeGuard called while a size-guard filter is already installed");
         AZ_Assert(qApp, "InstallMinimumSizeGuard called without a QApplication");
 
-        m_filter = new MinimumSizeGuardFilter(qApp);
-        AZ_Assert(m_filter, "Failed to allocate MinimumSizeGuardFilter");
-        qApp->installEventFilter(m_filter);
+        g_filter = new MinimumSizeGuardFilter(qApp);
+        AZ_Assert(g_filter, "Failed to allocate MinimumSizeGuardFilter");
+        qApp->installEventFilter(g_filter);
     }
 
-    void HammerQtEnvironmentAdapter::RemoveMinimumSizeGuard()
+    void RemoveMinimumSizeGuard()
     {
-        m_filter && (qApp->removeEventFilter(m_filter), true);
-        delete m_filter;
-        m_filter = nullptr;
+        g_filter && (qApp->removeEventFilter(g_filter), true);
+        delete g_filter;
+        g_filter = nullptr;
     }
 
-    double HammerQtEnvironmentAdapter::DoubleClickIntervalMs() const
+    double DoubleClickIntervalMs()
     {
         return qApp->doubleClickInterval();
     }
 
-    QWidget* HammerQtEnvironmentAdapter::FindMainEditorViewport(QWidget* root) const
+    QWidget* FindMainEditorViewport(QWidget* root)
     {
         QWidget* found = nullptr;
         root && (found = FindDescendantByClassName(*root, "EditorViewportWidget"), true);
         return found;
     }
 
-    AtomToolsFramework::RenderViewportWidget* HammerQtEnvironmentAdapter::FindRealRenderViewport(QWidget* root) const
+    AtomToolsFramework::RenderViewportWidget* FindRealRenderViewport(QWidget* root)
     {
         AtomToolsFramework::RenderViewportWidget* renderViewport = nullptr;
         root && (renderViewport = FindDescendantByDynamicCast<AtomToolsFramework::RenderViewportWidget>(*root), true);
@@ -145,7 +131,7 @@ namespace Hammer
         return renderViewport;
     }
 
-    QWidget* HammerQtEnvironmentAdapter::FindViewportUiOverlayWindow(QWidget* root) const
+    QWidget* FindViewportUiOverlayWindow(QWidget* root)
     {
         QWidget* found = nullptr;
         root && (found = root->findChild<QWidget*>(QStringLiteral("ViewportUiWindow")), true);

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <AzCore/Script/ScriptTimePoint.h>
-#include <AzCore/std/optional.h>
 #include <AzCore/std/smart_ptr/unique_ptr.h>
 #include <AzFramework/Input/Events/InputChannelEventListener.h>
 #include <AzFramework/Viewport/MultiViewportController.h>
@@ -40,30 +39,29 @@ namespace Hammer
 
         void ClassifyMouseMove(
             const AzFramework::ViewportControllerInputEvent& event,
-            AZStd::optional<AzToolsFramework::ViewportInteraction::MouseEvent>& eventType);
+            AzToolsFramework::ViewportInteraction::MouseEvent& eventType, bool& eventTypeSet);
         void ClassifyMouseButton(
             const AzFramework::ViewportControllerInputEvent& event, AzToolsFramework::ViewportInteraction::MouseButton mouseButton,
-            bool finishedProcessingEvents, AZStd::optional<AzToolsFramework::ViewportInteraction::MouseEvent>& eventType,
-            AZStd::optional<AzToolsFramework::ViewportInteraction::MouseButton>& overrideButton);
+            bool finishedProcessingEvents, AzToolsFramework::ViewportInteraction::MouseEvent& eventType, bool& eventTypeSet,
+            AzToolsFramework::ViewportInteraction::MouseButton& overrideButton);
         void ClassifyKeyboardModifier(
             const AzFramework::ViewportControllerInputEvent& event, AzToolsFramework::ViewportInteraction::KeyboardModifier keyboardModifier);
         void ClassifyWheel(
             const AzFramework::ViewportControllerInputEvent& event,
-            AZStd::optional<AzToolsFramework::ViewportInteraction::MouseEvent>& eventType, float& wheelDelta);
+            AzToolsFramework::ViewportInteraction::MouseEvent& eventType, bool& eventTypeSet, float& wheelDelta);
 
         void UpdateMousePick(const AzFramework::ViewportControllerInputEvent& event);
         void OnMouseButtonBegan(
             AzToolsFramework::ViewportInteraction::MouseButton mouseButton, AZ::u32 mouseButtonValue, bool finishedProcessingEvents,
-            AZStd::optional<AzToolsFramework::ViewportInteraction::MouseEvent>& eventType);
+            AzToolsFramework::ViewportInteraction::MouseEvent& eventType, bool& eventTypeSet);
         void OnMouseButtonEnded(
             AZ::u32 mouseButtonValue, bool finishedProcessingEvents,
-            AZStd::optional<AzToolsFramework::ViewportInteraction::MouseEvent>& eventType);
+            AzToolsFramework::ViewportInteraction::MouseEvent& eventType, bool& eventTypeSet);
         void UpdatePendingDoubleClick(AzToolsFramework::ViewportInteraction::MouseButton mouseButton, bool isDoubleClick);
 
         void DispatchMouseInteractionEvent(
             const AzFramework::ViewportControllerInputEvent& event, AzToolsFramework::ViewportInteraction::MouseEvent eventType,
-            float wheelDelta, const AZStd::optional<AzToolsFramework::ViewportInteraction::MouseButton>& overrideButton,
-            bool& interactionHandled);
+            float wheelDelta, AzToolsFramework::ViewportInteraction::MouseButton overrideButton, bool& interactionHandled);
 
         bool IsDoubleClick(AzToolsFramework::ViewportInteraction::MouseButton) const;
         void RefreshEntityVisibilityCache() const;

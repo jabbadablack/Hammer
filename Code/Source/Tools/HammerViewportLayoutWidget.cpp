@@ -2,13 +2,10 @@
 #include "HammerActiveViewportTracker.h"
 #include "HammerWidget.h"
 
-#include "HammerOptionalUtils.h"
-
-#include <Hammer/IHammerQtEnvironment.h>
+#include "HammerQtEnvironment.h"
 
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
 
-#include <AzCore/Interface/Interface.h>
 #include <AzCore/std/algorithm.h>
 #include <AzCore/std/containers/array.h>
 
@@ -179,15 +176,8 @@ namespace Hammer
     {
         AZ_Assert(m_adoptedViewport, "ResolveViewportUiOverlayWindow called before the real viewport was adopted");
 
-        auto* qtEnvironment = AZ::Interface<IHammerQtEnvironment>::Get();
-        AZ_Assert(qtEnvironment, "IHammerQtEnvironment must be registered before resolving the ViewportUi overlay window");
-
-        QWidget* overlay = m_viewportUiOverlayWindow.Get(
-            [this, qtEnvironment]() -> QWidget*
-            {
-                return qtEnvironment->FindViewportUiOverlayWindow(m_adoptedViewport);
-            });
-        overlay && (overlay->installEventFilter(this), true);
+        m_viewportUiOverlayWindow || (m_viewportUiOverlayWindow = FindViewportUiOverlayWindow(m_adoptedViewport), true);
+        m_viewportUiOverlayWindow && (m_viewportUiOverlayWindow->installEventFilter(this), true);
 
         AZ_Assert(!m_overlaySyncTimer, "ResolveViewportUiOverlayWindow should only start the sync timer once");
         m_overlaySyncTimer = new QTimer(this);
@@ -199,17 +189,17 @@ namespace Hammer
     // tick regardless of what Hammer does, so this has to keep re-asserting rather than react once.
     void HammerViewportLayoutWidget::SyncViewportUiOverlay()
     {
-        QWidget* overlay = m_viewportUiOverlayWindow.Peek();
-        const bool shouldChase = overlay && m_activeViewport && m_activeViewport != m_adoptedViewport;
+        const bool shouldChase = m_viewportUiOverlayWindow && m_activeViewport && m_activeViewport != m_adoptedViewport;
 
         shouldChase &&
-            (overlay->setGeometry(QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())), true);
+            (m_viewportUiOverlayWindow->setGeometry(QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())),
+             true);
     }
 
     // reacts instantly to the overlay's own move/resize instead of waiting up to one timer tick, so the overlay doesn't lag.
     bool HammerViewportLayoutWidget::eventFilter(QObject* watched, QEvent* event)
     {
-        const bool isOverlayMoveOrResize = watched == m_viewportUiOverlayWindow.Peek() && m_activeViewport &&
+        const bool isOverlayMoveOrResize = watched == m_viewportUiOverlayWindow && m_activeViewport &&
             m_activeViewport != m_adoptedViewport && (event->type() == QEvent::Move || event->type() == QEvent::Resize);
 
         isOverlayMoveOrResize &&
@@ -223,22 +213,20 @@ namespace Hammer
     void HammerViewportLayoutWidget::RestoreMaximizeSwap()
     {
         AZ_Assert(
-            !m_maximizedFromIndex.has_value() || *m_maximizedFromIndex < static_cast<int>(m_viewports.size()),
-            "RestoreMaximizeSwap has an out-of-range maximized index %d", m_maximizedFromIndex.value_or(-1));
-        m_maximizedFromIndex.has_value() && (AZStd::swap(m_viewports[0], m_viewports[*m_maximizedFromIndex]), true);
-        m_maximizedFromIndex.reset();
+            m_maximizedFromIndex == -1 || m_maximizedFromIndex < static_cast<int>(m_viewports.size()),
+            "RestoreMaximizeSwap has an out-of-range maximized index %d", m_maximizedFromIndex);
+        (m_maximizedFromIndex != -1) && (AZStd::swap(m_viewports[0], m_viewports[m_maximizedFromIndex]), true);
+        m_maximizedFromIndex = -1;
     }
 
     void HammerViewportLayoutWidget::MaximizeActiveViewport()
     {
         AZ_Assert(!m_viewports.empty(), "MaximizeActiveViewport called with no viewports to maximize");
-        AZ_Assert(!m_maximizedFromIndex.has_value(), "MaximizeActiveViewport called while already maximized");
+        AZ_Assert(m_maximizedFromIndex == -1, "MaximizeActiveViewport called while already maximized");
         AZ_Assert(m_activeViewport, "MaximizeActiveViewport called before any viewport was ever activated");
 
         const auto it = AZStd::find(m_viewports.begin(), m_viewports.end(), m_activeViewport);
-        const int activeIndex =
-            OptionalUtils::OptionalWhen(it != m_viewports.end(), static_cast<int>(AZStd::distance(m_viewports.begin(), it)))
-                .value_or(0);
+        const int activeIndex = it != m_viewports.end() ? static_cast<int>(AZStd::distance(m_viewports.begin(), it)) : 0;
 
         m_preMaximizeViewportCount = m_currentViewportCount;
         m_maximizedFromIndex = activeIndex;
@@ -249,7 +237,7 @@ namespace Hammer
 
     void HammerViewportLayoutWidget::RestoreFromMaximize()
     {
-        AZ_Assert(m_maximizedFromIndex.has_value(), "RestoreFromMaximize called while not maximized");
+        AZ_Assert(m_maximizedFromIndex != -1, "RestoreFromMaximize called while not maximized");
         AZ_Assert(
             m_preMaximizeViewportCount >= MinViewportCount && m_preMaximizeViewportCount <= MaxViewportCount,
             "RestoreFromMaximize has an out-of-range pre-maximize viewport count %d", m_preMaximizeViewportCount);
@@ -267,6 +255,6 @@ namespace Hammer
         static constexpr AZStd::array<Action, 2> Actions = {
             &HammerViewportLayoutWidget::MaximizeActiveViewport, &HammerViewportLayoutWidget::RestoreFromMaximize
         };
-        (this->*Actions[static_cast<size_t>(m_maximizedFromIndex.has_value())])();
+        (this->*Actions[static_cast<size_t>(m_maximizedFromIndex != -1)])();
     }
 } // namespace Hammer

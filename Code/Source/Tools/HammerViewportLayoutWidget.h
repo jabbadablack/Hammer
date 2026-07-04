@@ -5,13 +5,10 @@
 #include <QWidget>
 #endif
 
-#include "HammerLazyFind.h"
-
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 
 #include <AzCore/std/containers/array.h>
 #include <AzCore/std/containers/vector.h>
-#include <AzCore/std/optional.h>
 #include <AzCore/std/smart_ptr/shared_ptr.h>
 
 class QGridLayout;
@@ -68,11 +65,11 @@ namespace Hammer
         HammerWidget* m_activeViewport = nullptr;
         HammerWidget* m_adoptedViewport = nullptr;
         HammerWidget* m_preGameModeActiveViewport = nullptr;
-        LazyFind<QWidget> m_viewportUiOverlayWindow;
+        QWidget* m_viewportUiOverlayWindow = nullptr;
         QTimer* m_overlaySyncTimer = nullptr;
         QScopedPointer<Ui::HammerViewportLayoutWidgetClass> m_ui;
         AZStd::array<HammerWidget*, MaxViewportCount> m_gridSlotWidget = {};
-        AZStd::optional<int> m_maximizedFromIndex;
+        int m_maximizedFromIndex = -1;
         int m_preMaximizeViewportCount = MinViewportCount;
         int m_currentViewportCount = MinViewportCount;
     };
