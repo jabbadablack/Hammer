@@ -8,6 +8,8 @@
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 
 #include <AzCore/std/containers/vector.h>
+#include <AzCore/std/function/function_template.h>
+#include <AzCore/std/optional.h>
 #include <AzCore/std/smart_ptr/unique_ptr.h>
 
 #include "HammerViewportLayoutHandle.h"
@@ -16,12 +18,14 @@
 #include <QPointer>
 #endif
 
+class QDockWidget;
+class QStatusBar;
 class QToolButton;
+class QWidget;
 
 namespace Hammer
 {
     class HammerViewportLayoutWidget;
-    class HammerAdapterRegistry;
 
     class HammerEditorSystemComponent
         : public HammerSystemComponent
@@ -60,9 +64,20 @@ namespace Hammer
         void CreateViewportCountButtons();
         void DestroyViewportCountButtons();
 
-        AZStd::unique_ptr<HammerAdapterRegistry> m_adapters;
+        void PrepareEditorChrome();
+        void RestoreEditorChrome();
+        AZStd::optional<QWidget*> EmbedViewportPaneAsCentralWidget(
+            const char* paneName, const AZStd::function<QWidget*()>& expectedContentAccessor);
+        void RestoreViewportPaneToDockWidget(QWidget* content);
+        void ClosePane(const char* paneName);
+        void RegisterHotkeyAction(
+            const char* actionId, const char* name, const char* description, const char* category, const char* hotkey,
+            AZStd::function<void()> callback);
+        QStatusBar* GetMainWindowStatusBar() const;
+
         AZStd::unique_ptr<IHammerViewportLayoutHandle> m_viewportLayoutHandle = AZStd::make_unique<NullViewportLayoutHandle>();
         QPointer<HammerViewportLayoutWidget> m_viewportLayoutWidget;
         AZStd::vector<QPointer<QToolButton>> m_viewportCountButtons;
+        QPointer<QDockWidget> m_paneDockWidget;
     };
 } // namespace Hammer

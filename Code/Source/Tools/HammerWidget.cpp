@@ -1,8 +1,9 @@
 #include "HammerWidget.h"
+#include "HammerNames.h"
+#include "HammerQtEnvironment.h"
+#include "HammerRenderViewportWidget.h"
+#include "HammerViewportCameraFactory.h"
 #include "HammerViewportManipulatorController.h"
-
-#include <Hammer/IHammerQtEnvironment.h>
-#include <Hammer/IHammerRenderBackend.h>
 
 #include <AzCore/Interface/Interface.h>
 #include <Hammer/HammerEditorViewportBus.h>
@@ -10,7 +11,12 @@
 #include <QEvent>
 
 #include <Atom/RHI/RHISystemInterface.h>
+#include <Atom/RPI.Public/Pass/Pass.h>
+#include <Atom/RPI.Public/RenderPipeline.h>
+#include <Atom/RPI.Public/ViewportContext.h>
+#include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
+#include <AzCore/std/containers/array.h>
 #include <AzFramework/Scene/Scene.h>
 #include <AzFramework/Scene/SceneSystemInterface.h>
 #include <AzFramework/Viewport/ViewportControllerList.h>
@@ -24,15 +30,66 @@ namespace Hammer::Platform
 
 namespace Hammer
 {
+    namespace
+    {
+        void SetOverlayPassEnabled(AZ::RPI::ViewportContextPtr viewportContext, bool enabled)
+        {
+            AZ::RPI::RenderPipelinePtr pipeline;
+            viewportContext && (pipeline = viewportContext->GetCurrentPipeline(), true);
+
+            AZ::RPI::Ptr<AZ::RPI::Pass> twoDPass;
+            pipeline && (twoDPass = pipeline->FindFirstPass(AZ::Name("2DPass")), true);
+            AZ_Error(
+                "HammerWidget", twoDPass,
+                "Could not find this viewport's own \"2DPass\" - entity icons may keep rendering in inactive viewports");
+            twoDPass && (twoDPass->SetEnabled(enabled), true);
+        }
+
+        void SyncViewportContextName(AZ::RPI::ViewportContextPtr viewportContext, AzFramework::ViewportId viewportId, bool active)
+        {
+            AZ_Assert(viewportContext, "SyncViewportContextName called with a null ViewportContext");
+            AZ_Assert(viewportId != AzFramework::InvalidViewportId, "SyncViewportContextName called with an invalid ViewportId");
+
+            auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
+            AZ_Error("HammerWidget", viewportContextManager, "Could not find AZ::RPI::ViewportContextRequestsInterface");
+
+            const AZ::Name defaultName = viewportContextManager->GetDefaultViewportContextName();
+            const AZ::Name currentName = viewportContext->GetName();
+
+            const AZStd::array<AZ::Name, 2> candidateNames = { Names::PerViewportContextName(viewportId), defaultName };
+            const AZ::Name& desiredName = candidateNames[static_cast<size_t>(active)];
+
+            (currentName != desiredName) && (viewportContextManager->RenameViewportContext(viewportContext, desiredName), true);
+        }
+
+        void AddToRenderTick(AZ::RPI::RenderPipeline& pipeline)
+        {
+            pipeline.AddToRenderTick();
+        }
+
+        void RemoveFromRenderTick(AZ::RPI::RenderPipeline& pipeline)
+        {
+            pipeline.RemoveFromRenderTick();
+        }
+
+        using RenderTickAction = void (*)(AZ::RPI::RenderPipeline&);
+        constexpr AZStd::array<RenderTickAction, 2> RenderTickActions = { &RemoveFromRenderTick, &AddToRenderTick };
+
+        void SetPipelineRenderTickEnabled(AZ::RPI::ViewportContextPtr viewportContext, bool enabled)
+        {
+            AZ::RPI::RenderPipelinePtr pipeline;
+            viewportContext && (pipeline = viewportContext->GetCurrentPipeline(), true);
+            pipeline && (RenderTickActions[static_cast<size_t>(enabled)](*pipeline), true);
+        }
+    } // namespace
+
     HammerWidget::HammerWidget(QWidget* parent)
         : QWidget(parent)
         , m_ui(new Ui::HammerWidgetClass())
     {
         m_ui->setupUi(this);
 
-        auto* renderBackend = AZ::Interface<IHammerRenderBackend>::Get();
-        AZ_Assert(renderBackend, "IHammerRenderBackend must be registered before constructing a HammerWidget");
-        m_viewportWidget = renderBackend->CreateRenderViewportWidget(this);
+        m_viewportWidget = new HammerRenderViewportWidget(this, false);
         AZ_Assert(m_viewportWidget, "Failed to allocate the Hammer render viewport widget");
         m_viewportWidget->installEventFilter(this);
 
@@ -65,9 +122,7 @@ namespace Hammer
         realViewport.setParent(nullptr);
         realViewport.setParent(this);
 
-        auto* qtEnvironment = AZ::Interface<IHammerQtEnvironment>::Get();
-        AZ_Assert(qtEnvironment, "IHammerQtEnvironment must be registered before adopting a HammerWidget");
-        qtEnvironment && (m_viewportWidget = qtEnvironment->FindRealRenderViewport(&realViewport), true);
+        m_viewportWidget = FindRealRenderViewport(&realViewport);
         AZ_Error("HammerWidget", m_viewportWidget, "Could not resolve the adopted real viewport's inner RenderViewportWidget");
         m_viewportWidget && (m_viewportWidget->installEventFilter(this), true);
 
@@ -133,12 +188,9 @@ namespace Hammer
                  &HammerEditorActiveViewportRequests::SetActiveViewportId, m_viewportWidget->GetId()),
              true);
 
-        auto* renderBackend = AZ::Interface<IHammerRenderBackend>::Get();
-        AZ_Assert(renderBackend, "IHammerRenderBackend must be registered before ApplyActiveState is called");
-
         AZ::RPI::ViewportContextPtr viewportContext = m_viewportWidget->GetViewportContext();
-        renderBackend->SetOverlayPassEnabled(viewportContext, m_active);
-        renderBackend->SyncViewportContextName(viewportContext, m_viewportWidget->GetId(), m_active);
+        SetOverlayPassEnabled(viewportContext, m_active);
+        SyncViewportContextName(viewportContext, m_viewportWidget->GetId(), m_active);
     }
 
     void HammerWidget::InitializeSceneIfReady()
@@ -165,9 +217,7 @@ namespace Hammer
         AZ_Error("HammerWidget", mainScene, "Main scene '%s' not found", AzFramework::Scene::MainSceneName.data());
         mainScene && (m_viewportWidget->SetScene(mainScene, /*useDefaultRenderPipeline*/ true), true);
 
-        auto* renderBackend = AZ::Interface<IHammerRenderBackend>::Get();
-        AZ_Assert(renderBackend, "IHammerRenderBackend must be registered before InitializeSceneIfReady is called");
-        m_viewportWidget->GetControllerList()->Add(renderBackend->BuildViewportCameraController(m_viewportWidget->GetId()));
+        m_viewportWidget->GetControllerList()->Add(CreateViewportCameraController(m_viewportWidget->GetId()));
         m_viewportWidget->GetControllerList()->Add(AZStd::make_shared<HammerViewportManipulatorController>());
 
         ApplyActiveState();
@@ -177,8 +227,6 @@ namespace Hammer
     void HammerWidget::ApplyRenderTickState()
     {
         AZ_Assert(m_viewportWidget, "ApplyRenderTickState called without an initialized viewport widget");
-        auto* renderBackend = AZ::Interface<IHammerRenderBackend>::Get();
-        AZ_Assert(renderBackend, "IHammerRenderBackend must be registered before ApplyRenderTickState is called");
-        renderBackend->SetRenderTickEnabled(m_viewportWidget->GetViewportContext(), m_renderTickEnabled);
+        SetPipelineRenderTickEnabled(m_viewportWidget->GetViewportContext(), m_renderTickEnabled);
     }
 }

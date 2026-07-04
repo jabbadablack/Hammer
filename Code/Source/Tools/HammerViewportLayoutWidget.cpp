@@ -3,12 +3,10 @@
 #include "HammerWidget.h"
 
 #include "HammerOptionalUtils.h"
-
-#include <Hammer/IHammerQtEnvironment.h>
+#include "HammerQtEnvironment.h"
 
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
 
-#include <AzCore/Interface/Interface.h>
 #include <AzCore/std/algorithm.h>
 #include <AzCore/std/containers/array.h>
 
@@ -179,13 +177,10 @@ namespace Hammer
     {
         AZ_Assert(m_adoptedViewport, "ResolveViewportUiOverlayWindow called before the real viewport was adopted");
 
-        auto* qtEnvironment = AZ::Interface<IHammerQtEnvironment>::Get();
-        AZ_Assert(qtEnvironment, "IHammerQtEnvironment must be registered before resolving the ViewportUi overlay window");
-
         QWidget* overlay = m_viewportUiOverlayWindow.Get(
-            [this, qtEnvironment]() -> QWidget*
+            [this]() -> QWidget*
             {
-                return qtEnvironment->FindViewportUiOverlayWindow(m_adoptedViewport);
+                return FindViewportUiOverlayWindow(m_adoptedViewport);
             });
         overlay && (overlay->installEventFilter(this), true);
 

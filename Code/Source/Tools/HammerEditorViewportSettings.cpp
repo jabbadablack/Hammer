@@ -1,22 +1,12 @@
 #include "HammerEditorViewportSettings.h"
 
-#include <Hammer/IHammerSettingsProvider.h>
-
-#include <AzCore/Interface/Interface.h>
 #include <Hammer/HammerEditorViewportBus.h>
+
+#include <AzToolsFramework/API/SettingsRegistryUtils.h>
+#include <AzToolsFramework/Viewport/ViewportSettings.h>
 
 namespace Hammer
 {
-    namespace
-    {
-        IHammerSettingsProvider& Settings()
-        {
-            auto* settings = AZ::Interface<IHammerSettingsProvider>::Get();
-            AZ_Assert(settings, "IHammerSettingsProvider must be registered before HammerEditorViewportSettings is used");
-            return *settings;
-        }
-    } // namespace
-
     HammerEditorViewportSettings::HammerEditorViewportSettings(AzFramework::ViewportId viewport)
         : m_viewportId(viewport)
     {
@@ -38,52 +28,57 @@ namespace Hammer
 
     bool HammerEditorViewportSettings::GridSnappingEnabled() const
     {
-        return Settings().GridSnappingEnabled();
+        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/GridSnapping", true);
     }
 
     float HammerEditorViewportSettings::GridSize() const
     {
-        return Settings().GridSize();
+        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/GridSize", 0.1));
     }
 
     bool HammerEditorViewportSettings::ShowGrid() const
     {
-        return Settings().ShowGrid();
+        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/ShowGrid", false);
     }
 
     bool HammerEditorViewportSettings::AngleSnappingEnabled() const
     {
-        return Settings().AngleSnappingEnabled();
+        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/AngleSnapping", false);
     }
 
     float HammerEditorViewportSettings::AngleStep() const
     {
-        return Settings().AngleStep();
+        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/AngleSize", 5.0));
     }
 
     float HammerEditorViewportSettings::ManipulatorLineBoundWidth() const
     {
-        return Settings().ManipulatorLineBoundWidth();
+        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Manipulator/LineBoundWidth", 0.1));
     }
 
     float HammerEditorViewportSettings::ManipulatorCircleBoundWidth() const
     {
-        return Settings().ManipulatorCircleBoundWidth();
+        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Manipulator/CircleBoundWidth", 0.1));
     }
 
     bool HammerEditorViewportSettings::StickySelectEnabled() const
     {
-        return Settings().StickySelectEnabled();
+        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/StickySelect", false);
     }
 
     AZ::Vector3 HammerEditorViewportSettings::DefaultEditorCameraPosition() const
     {
-        return Settings().DefaultEditorCameraPosition();
+        return AZ::Vector3(
+            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/x", 0.0)),
+            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/y", -10.0)),
+            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/z", 4.0)));
     }
 
     AZ::Vector2 HammerEditorViewportSettings::DefaultEditorCameraOrientation() const
     {
-        return Settings().DefaultEditorCameraOrientation();
+        return AZ::Vector2(
+            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPitch", 0.0)),
+            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingYaw", 0.0)));
     }
 
     bool HammerEditorViewportSettings::IconsVisible() const
@@ -95,11 +90,11 @@ namespace Hammer
 
     bool HammerEditorViewportSettings::HelpersVisible() const
     {
-        return Settings().HelpersVisible();
+        return AzToolsFramework::HelpersVisible();
     }
 
     bool HammerEditorViewportSettings::OnlyShowHelpersForSelectedEntities() const
     {
-        return Settings().OnlyShowHelpersForSelectedEntities();
+        return AzToolsFramework::OnlyShowHelpersForSelectedEntities();
     }
 }

@@ -19,21 +19,11 @@ set(FILES
     Source/Tools/HammerActiveViewportTracker.h
     Source/Tools/HammerNames.h
     Source/Tools/HammerOptionalUtils.h
-    Source/Tools/Adapters/HammerAzEditorShellAdapter.cpp
-    Source/Tools/Adapters/HammerAzEditorShellAdapter.h
-    Source/Tools/Adapters/HammerNullEditorShell.h
-    Source/Tools/Adapters/HammerAtomRenderBackendAdapter.cpp
-    Source/Tools/Adapters/HammerAtomRenderBackendAdapter.h
-    Source/Tools/Adapters/HammerNullRenderBackend.h
-    Source/Tools/Adapters/HammerRenderViewportWidget.cpp
-    Source/Tools/Adapters/HammerRenderViewportWidget.h
-    Source/Tools/Adapters/HammerViewportCameraFactory.cpp
-    Source/Tools/Adapters/HammerViewportCameraFactory.h
-    Source/Tools/Adapters/HammerQtEnvironmentAdapter.cpp
-    Source/Tools/Adapters/HammerQtEnvironmentAdapter.h
-    Source/Tools/Adapters/HammerNullQtEnvironment.h
-    Source/Tools/Adapters/HammerAzSettingsRegistryAdapter.cpp
-    Source/Tools/Adapters/HammerAzSettingsRegistryAdapter.h
-    Source/Tools/Adapters/HammerNullSettingsProvider.h
+    Source/Tools/HammerQtEnvironment.h
+    Source/Tools/HammerQtEnvironment.cpp
+    Source/Tools/HammerRenderViewportWidget.cpp
+    Source/Tools/HammerRenderViewportWidget.h
+    Source/Tools/HammerViewportCameraFactory.cpp
+    Source/Tools/HammerViewportCameraFactory.h
     Source/Tools/Hammer.qrc
 )

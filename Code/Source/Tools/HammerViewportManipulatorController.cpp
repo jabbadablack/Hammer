@@ -1,9 +1,7 @@
 #include "HammerViewportManipulatorController.h"
 #include "HammerEditorViewportSettings.h"
+#include "HammerQtEnvironment.h"
 
-#include <Hammer/IHammerQtEnvironment.h>
-
-#include <AzCore/Interface/Interface.h>
 #include <AzCore/std/containers/array.h>
 
 #include <AzFramework/Entity/EntityDebugDisplayBus.h>
@@ -294,8 +292,7 @@ namespace Hammer
         bool insideDistanceThreshold = false;
         found &&
             (insideTimeThreshold =
-                 (m_currentTime.GetMilliseconds() - clickIt->second.m_time.GetMilliseconds()) <
-                 AZ::Interface<IHammerQtEnvironment>::Get()->DoubleClickIntervalMs(),
+                 (m_currentTime.GetMilliseconds() - clickIt->second.m_time.GetMilliseconds()) < DoubleClickIntervalMs(),
              insideDistanceThreshold =
                  AzFramework::ScreenVectorLength(clickIt->second.m_position - m_mouseInteraction.m_mousePick.m_screenCoordinates) <
                  AzFramework::DefaultMouseMoveDeadZone,
