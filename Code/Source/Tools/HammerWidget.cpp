@@ -56,14 +56,11 @@ namespace Hammer
     HammerWidget::HammerWidget(QWidget* parent, QWidget& realViewport, AdoptTag)
         : QWidget(parent)
     {
-        QVBoxLayout* mainLayout = new QVBoxLayout(this);
-        mainLayout->setContentsMargins(0, 0, 0, 0);
-        mainLayout->setSpacing(0);
-
         m_adoptedRealViewport = &realViewport;
+        realViewport.hide();
+        realViewport.setParent(nullptr);
         realViewport.setParent(this);
-        mainLayout->addWidget(&realViewport);
-        setLayout(mainLayout);
+        realViewport.setGeometry(rect());
 
         auto* qtEnvironment = AZ::Interface<IHammerQtEnvironment>::Get();
         AZ_Assert(qtEnvironment, "IHammerQtEnvironment must be registered before adopting a HammerWidget");
@@ -80,12 +77,14 @@ namespace Hammer
     void HammerWidget::resizeEvent(QResizeEvent* event)
     {
         QWidget::resizeEvent(event);
+        m_adoptedRealViewport && (m_adoptedRealViewport->setGeometry(rect()), true);
         InitializeSceneIfReady();
     }
 
     void HammerWidget::showEvent(QShowEvent* event)
     {
         QWidget::showEvent(event);
+        m_adoptedRealViewport && (m_adoptedRealViewport->setGeometry(rect()), true);
         InitializeSceneIfReady();
     }
 

@@ -146,6 +146,7 @@ namespace Hammer
 
         m_gridLayout->addWidget(adopted, 0, 0);
         adopted->show();
+        realViewport.show();
         adopted->SetRenderTickEnabled(true);
 
         ActivateViewport(adopted);
