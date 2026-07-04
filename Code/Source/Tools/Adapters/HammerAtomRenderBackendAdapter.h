@@ -15,8 +15,6 @@ namespace Hammer
         explicit HammerAtomRenderBackendAdapter(AZ::RPI::ViewportContextRequestsInterface& viewportContextManager);
 
         void RenameDefaultViewportContext(const AZ::Name& newName) const override;
-        AZ::RPI::ViewportContextPtr FindViewportContextByName(const AZ::Name& name) const override;
-        void SyncActiveCamera(AZ::RPI::ViewportContextPtr hiddenContext, AZ::RPI::ViewportContextPtr activeContext) const override;
         void SetOverlayPassEnabled(AZ::RPI::ViewportContextPtr viewportContext, bool enabled) const override;
         void SetRenderTickEnabled(AZ::RPI::ViewportContextPtr viewportContext, bool enabled) const override;
         void SyncViewportContextName(

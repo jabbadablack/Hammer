@@ -8,8 +8,6 @@ namespace Hammer
     {
     public:
         void RenameDefaultViewportContext(const AZ::Name&) const override {}
-        AZ::RPI::ViewportContextPtr FindViewportContextByName(const AZ::Name&) const override { return nullptr; }
-        void SyncActiveCamera(AZ::RPI::ViewportContextPtr, AZ::RPI::ViewportContextPtr) const override {}
         void SetOverlayPassEnabled(AZ::RPI::ViewportContextPtr, bool) const override {}
         void SetRenderTickEnabled(AZ::RPI::ViewportContextPtr, bool) const override {}
         void SyncViewportContextName(AZ::RPI::ViewportContextPtr, AzFramework::ViewportId, bool) const override {}

@@ -300,7 +300,7 @@ namespace Hammer
 
         auto* renderBackend = AZ::Interface<IHammerRenderBackend>::Get();
         AZ_Assert(renderBackend, "IHammerRenderBackend must be registered before EmbedViewportInCenter is called");
-        renderBackend->RenameDefaultViewportContext(Names::HiddenPerspectiveViewportContextAzName());
+        renderBackend->RenameDefaultViewportContext(AZ::Name("Hammer Startup Placeholder"));
 
         const AZStd::optional<QWidget*> oldViewport = AZ::Interface<IHammerEditorShell>::Get()->EmbedViewportPaneAsCentralWidget(
             Names::ViewportPaneName,
@@ -312,7 +312,7 @@ namespace Hammer
         QWidget* oldViewportPtr = nullptr;
         oldViewport.has_value() && (oldViewportPtr = *oldViewport, true);
 
-        (oldViewportPtr && m_viewportLayoutWidget) && (m_viewportLayoutWidget->SetHiddenRealViewport(*oldViewportPtr), true);
+        (oldViewportPtr && m_viewportLayoutWidget) && (m_viewportLayoutWidget->AdoptRealPerspectiveViewport(*oldViewportPtr), true);
     }
 
     void HammerEditorSystemComponent::CreateViewportCountButtons()

@@ -25,8 +25,6 @@ namespace Hammer
         virtual ~IHammerRenderBackend() = default;
 
         virtual void RenameDefaultViewportContext(const AZ::Name& newName) const = 0;
-        virtual AZ::RPI::ViewportContextPtr FindViewportContextByName(const AZ::Name& name) const = 0;
-        virtual void SyncActiveCamera(AZ::RPI::ViewportContextPtr hiddenContext, AZ::RPI::ViewportContextPtr activeContext) const = 0;
         virtual void SetOverlayPassEnabled(AZ::RPI::ViewportContextPtr viewportContext, bool enabled) const = 0;
         virtual void SetRenderTickEnabled(AZ::RPI::ViewportContextPtr viewportContext, bool enabled) const = 0;
         virtual void SyncViewportContextName(

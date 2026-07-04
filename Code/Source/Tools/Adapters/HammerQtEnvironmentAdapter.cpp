@@ -63,6 +63,19 @@ namespace Hammer
                 });
             return OptionalUtils::ToOptional(it, children.end()).value_or(nullptr);
         }
+
+        template<typename T>
+        T* FindDescendantByDynamicCast(QWidget& root)
+        {
+            const QList<QWidget*> children = root.findChildren<QWidget*>();
+            const auto it = AZStd::find_if(
+                children.begin(), children.end(),
+                [](QWidget* child)
+                {
+                    return dynamic_cast<T*>(child) != nullptr;
+                });
+            return dynamic_cast<T*>(OptionalUtils::ToOptional(it, children.end()).value_or(nullptr));
+        }
     } // namespace
 
     class HammerQtEnvironmentAdapter::MinimumSizeGuardFilter : public QObject
@@ -123,9 +136,8 @@ namespace Hammer
 
     AtomToolsFramework::RenderViewportWidget* HammerQtEnvironmentAdapter::FindRealRenderViewport(QWidget* root) const
     {
-        QWidget* found = nullptr;
-        root && (found = FindDescendantByClassName(*root, "RenderViewportWidget"), true);
-        auto* renderViewport = static_cast<AtomToolsFramework::RenderViewportWidget*>(found);
+        AtomToolsFramework::RenderViewportWidget* renderViewport = nullptr;
+        root && (renderViewport = FindDescendantByDynamicCast<AtomToolsFramework::RenderViewportWidget>(*root), true);
         renderViewport && (renderViewport->SetInputProcessingEnabled(false), true);
         return renderViewport;
     }

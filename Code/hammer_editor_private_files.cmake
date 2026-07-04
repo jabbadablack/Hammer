@@ -6,8 +6,6 @@ set(FILES
     Source/Tools/HammerViewportLayoutWidget.h
     Source/Tools/HammerViewportLayoutHandle.cpp
     Source/Tools/HammerViewportLayoutHandle.h
-    Source/Tools/HammerHiddenViewportProxy.cpp
-    Source/Tools/HammerHiddenViewportProxy.h
     Source/Tools/HammerLazyFind.h
     Source/Tools/HammerWidget.cpp
     Source/Tools/HammerWidget.h

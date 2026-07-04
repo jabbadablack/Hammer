@@ -1,13 +1,16 @@
 #include "HammerViewportLayoutWidget.h"
 #include "HammerActiveViewportTracker.h"
-#include "HammerHiddenViewportProxy.h"
 #include "HammerWidget.h"
 
 #include "HammerOptionalUtils.h"
 
+#include <Hammer/IHammerQtEnvironment.h>
+
+#include <AzCore/Interface/Interface.h>
 #include <AzCore/std/algorithm.h>
 #include <AzCore/std/containers/array.h>
 
+#include <QEvent>
 #include <QGridLayout>
 #include <QVBoxLayout>
 
@@ -26,9 +29,6 @@ namespace Hammer
         m_gridLayout->setContentsMargins(0, 0, 0, 0);
         m_gridLayout->setSpacing(3);
         outerLayout->addWidget(m_gridContainer, /*stretch*/ 1);
-
-        m_hiddenViewportProxy = new HammerHiddenViewportProxy(*m_gridContainer, this);
-        AZ_Assert(m_hiddenViewportProxy, "Failed to allocate HammerHiddenViewportProxy");
 
         for (int i = 0; i < MaxViewportCount; ++i)
         {
@@ -58,8 +58,7 @@ namespace Hammer
         const bool alreadyActive = viewport == m_activeViewport;
 
         (!alreadyActive && m_activeViewport) && (m_activeViewport->SetActive(false), true);
-        !alreadyActive &&
-            (viewport->SetActive(true), m_hiddenViewportProxy->SetActiveViewport(*viewport), m_activeViewport = viewport, true);
+        !alreadyActive && (viewport->SetActive(true), m_activeViewport = viewport, true);
     }
 
     void HammerViewportLayoutWidget::ReconcileGridSlots(int shownCount, int columns)
@@ -115,10 +114,73 @@ namespace Hammer
         emit ViewportCountChanged(count);
     }
 
-    void HammerViewportLayoutWidget::SetHiddenRealViewport(QWidget& realViewport)
+    void HammerViewportLayoutWidget::AdoptRealPerspectiveViewport(QWidget& realViewport)
     {
-        AZ_Assert(m_hiddenViewportProxy, "SetHiddenRealViewport called before the hidden viewport proxy was constructed");
-        m_hiddenViewportProxy->SetHiddenRealViewport(realViewport);
+        AZ_Assert(!m_adoptedViewport, "AdoptRealPerspectiveViewport called more than once");
+        AZ_Assert(
+            m_viewports.size() == MaxViewportCount, "AdoptRealPerspectiveViewport expects all %d viewports to already exist",
+            MaxViewportCount);
+        AZ_Assert(m_activeViewport == m_viewports[0], "AdoptRealPerspectiveViewport expects slot 0 to still be the active viewport");
+
+        HammerWidget* placeholder = m_viewports[0];
+
+        HammerWidget* adopted = HammerWidget::CreateAdopting(m_gridContainer, realViewport);
+        AZ_Assert(adopted, "Failed to allocate the adopting HammerWidget");
+
+        connect(
+            adopted, &HammerWidget::ViewportFocusRequested, this,
+            [this, adopted]
+            {
+                ActivateViewport(adopted);
+            });
+
+        m_viewports[0] = adopted;
+        m_adoptedViewport = adopted;
+
+        const auto slotIt = AZStd::find(m_gridSlotWidget.begin(), m_gridSlotWidget.end(), placeholder);
+        (slotIt != m_gridSlotWidget.end()) && (*slotIt = adopted, true);
+
+        m_gridLayout->removeWidget(placeholder);
+        placeholder->hide();
+        placeholder->SetRenderTickEnabled(false);
+
+        m_gridLayout->addWidget(adopted, 0, 0);
+        adopted->show();
+        adopted->SetRenderTickEnabled(true);
+
+        ActivateViewport(adopted);
+
+        delete placeholder;
+
+        ResolveViewportUiOverlayWindow();
+    }
+
+    void HammerViewportLayoutWidget::ResolveViewportUiOverlayWindow()
+    {
+        AZ_Assert(m_adoptedViewport, "ResolveViewportUiOverlayWindow called before the real viewport was adopted");
+
+        auto* qtEnvironment = AZ::Interface<IHammerQtEnvironment>::Get();
+        AZ_Assert(qtEnvironment, "IHammerQtEnvironment must be registered before resolving the ViewportUi overlay window");
+
+        QWidget* overlay = m_viewportUiOverlayWindow.Get(
+            [this, qtEnvironment]() -> QWidget*
+            {
+                return qtEnvironment->FindViewportUiOverlayWindow(m_adoptedViewport);
+            });
+        overlay && (overlay->installEventFilter(this), true);
+    }
+
+    bool HammerViewportLayoutWidget::eventFilter(QObject* watched, QEvent* event)
+    {
+        const bool isOverlayMoveOrResize = watched == m_viewportUiOverlayWindow.Peek() && m_activeViewport &&
+            m_activeViewport != m_adoptedViewport && (event->type() == QEvent::Move || event->type() == QEvent::Resize);
+
+        isOverlayMoveOrResize &&
+            (static_cast<QWidget*>(watched)->setGeometry(
+                 QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())),
+             true);
+
+        return QWidget::eventFilter(watched, event);
     }
 
     void HammerViewportLayoutWidget::RestoreMaximizeSwap()
