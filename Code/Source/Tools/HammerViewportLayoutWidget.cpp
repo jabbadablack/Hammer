@@ -51,6 +51,24 @@ namespace Hammer
         }
 
         SetViewportCount(1);
+
+        AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler::BusConnect();
+    }
+
+    HammerViewportLayoutWidget::~HammerViewportLayoutWidget()
+    {
+        AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler::BusDisconnect();
+    }
+
+    void HammerViewportLayoutWidget::OnStartGameModeRequest()
+    {
+        m_adoptedViewport && (m_preGameModeActiveViewport = m_activeViewport, ActivateViewport(m_adoptedViewport), true);
+    }
+
+    void HammerViewportLayoutWidget::OnStopGameModeRequest()
+    {
+        m_preGameModeActiveViewport && (ActivateViewport(m_preGameModeActiveViewport), true);
+        m_preGameModeActiveViewport = nullptr;
     }
 
     void HammerViewportLayoutWidget::ActivateViewport(HammerWidget* viewport)

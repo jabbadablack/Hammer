@@ -6,6 +6,8 @@
 
 #include "HammerLazyFind.h"
 
+#include <AzToolsFramework/Entity/EditorEntityContextBus.h>
+
 #include <AzCore/std/containers/array.h>
 #include <AzCore/std/containers/vector.h>
 #include <AzCore/std/optional.h>
@@ -21,6 +23,7 @@ namespace Hammer
 
     class HammerViewportLayoutWidget
         : public QWidget
+        , private AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler
     {
         Q_OBJECT
     public:
@@ -28,7 +31,7 @@ namespace Hammer
         static constexpr int MaxViewportCount = 4;
 
         explicit HammerViewportLayoutWidget(QWidget* parent = nullptr);
-        ~HammerViewportLayoutWidget() override = default;
+        ~HammerViewportLayoutWidget() override;
 
         void AdoptRealPerspectiveViewport(QWidget& realViewport);
         void SetViewportCount(int count);
@@ -49,12 +52,16 @@ namespace Hammer
         void ResolveViewportUiOverlayWindow();
         void SyncViewportUiOverlay();
 
+        void OnStartGameModeRequest() override;
+        void OnStopGameModeRequest() override;
+
         QGridLayout* m_gridLayout = nullptr;
         QWidget* m_gridContainer = nullptr;
         AZStd::vector<HammerWidget*> m_viewports;
         AZStd::shared_ptr<ActiveViewportTracker> m_activeViewportTracker;
         HammerWidget* m_activeViewport = nullptr;
         HammerWidget* m_adoptedViewport = nullptr;
+        HammerWidget* m_preGameModeActiveViewport = nullptr;
         LazyFind<QWidget> m_viewportUiOverlayWindow;
         QTimer* m_overlaySyncTimer = nullptr;
         AZStd::array<HammerWidget*, MaxViewportCount> m_gridSlotWidget = {};
