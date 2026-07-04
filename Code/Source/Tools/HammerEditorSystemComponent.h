@@ -2,6 +2,8 @@
 
 #include <Clients/HammerSystemComponent.h>
 
+#include <Hammer/HammerViewportRequestBus.h>
+
 #include <AzToolsFramework/ActionManager/ActionManagerRegistrationNotificationBus.h>
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 
@@ -25,6 +27,7 @@ namespace Hammer
         : public HammerSystemComponent
         , protected AzToolsFramework::EditorEvents::Bus::Handler
         , protected AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler
+        , protected HammerViewportRequestBus::Handler
     {
         using BaseSystemComponent = HammerSystemComponent;
     public:
@@ -48,6 +51,9 @@ namespace Hammer
         void NotifyEditorInitialized() override;
 
         void OnActionRegistrationHook() override;
+
+        void SetViewportCount(int count) override;
+        void ToggleMaximizeActiveViewport() override;
 
         void RegisterViewportPane();
         void EmbedViewportInCenter();

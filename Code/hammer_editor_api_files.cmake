@@ -2,6 +2,7 @@
 
 set(FILES
     Include/Hammer/HammerEditorViewportBus.h
+    Include/Hammer/HammerViewportRequestBus.h
     Include/Hammer/IHammerEditorShell.h
     Include/Hammer/IHammerRenderBackend.h
     Include/Hammer/IHammerQtEnvironment.h

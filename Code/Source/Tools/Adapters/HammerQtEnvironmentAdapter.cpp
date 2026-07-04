@@ -64,6 +64,9 @@ namespace Hammer
             return OptionalUtils::ToOptional(it, children.end()).value_or(nullptr);
         }
 
+        // dynamic_cast, not azdynamic_cast: T here is a plain Qt/AtomToolsFramework widget type
+        // with no AZ_RTTI and no Q_OBJECT of its own, so neither azdynamic_cast nor
+        // QObject::findChild<T*>() can identify it.
         template<typename T>
         T* FindDescendantByDynamicCast(QWidget& root)
         {

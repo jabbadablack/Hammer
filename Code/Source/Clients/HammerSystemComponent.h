@@ -3,13 +3,11 @@
 
 #include <AzCore/Component/Component.h>
 #include <AzCore/Component/TickBus.h>
-#include <Hammer/HammerBus.h>
 
 namespace Hammer
 {
     class HammerSystemComponent
         : public AZ::Component
-        , protected HammerRequestBus::Handler
         , public AZ::TickBus::Handler
     {
     public:
@@ -26,11 +24,6 @@ namespace Hammer
         ~HammerSystemComponent();
 
     protected:
-        ////////////////////////////////////////////////////////////////////////
-        // HammerRequestBus interface implementation
-
-        ////////////////////////////////////////////////////////////////////////
-
         ////////////////////////////////////////////////////////////////////////
         // AZ::Component interface implementation
         void Init() override;

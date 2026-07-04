@@ -8,7 +8,6 @@
 #include <Hammer/HammerEditorViewportBus.h>
 
 #include <QEvent>
-#include <QVBoxLayout>
 
 #include <Atom/RHI/RHISystemInterface.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
@@ -16,14 +15,20 @@
 #include <AzFramework/Scene/SceneSystemInterface.h>
 #include <AzFramework/Viewport/ViewportControllerList.h>
 
+#include <Tools/ui_HammerWidget.h>
+
+namespace Hammer::Platform
+{
+    void SyncAdoptedViewportGeometry(QWidget& adoptedRealViewport, const QRect& targetGeometry);
+} // namespace Hammer::Platform
+
 namespace Hammer
 {
     HammerWidget::HammerWidget(QWidget* parent)
         : QWidget(parent)
+        , m_ui(new Ui::HammerWidgetClass())
     {
-        QVBoxLayout* mainLayout = new QVBoxLayout(this);
-        mainLayout->setContentsMargins(0, 0, 0, 0);
-        mainLayout->setSpacing(0);
+        m_ui->setupUi(this);
 
         auto* renderBackend = AZ::Interface<IHammerRenderBackend>::Get();
         AZ_Assert(renderBackend, "IHammerRenderBackend must be registered before constructing a HammerWidget");
@@ -31,8 +36,7 @@ namespace Hammer
         AZ_Assert(m_viewportWidget, "Failed to allocate the Hammer render viewport widget");
         m_viewportWidget->installEventFilter(this);
 
-        mainLayout->addWidget(m_viewportWidget);
-        setLayout(mainLayout);
+        m_ui->mainLayout->addWidget(m_viewportWidget);
     }
 
     HammerWidget::~HammerWidget()
@@ -60,7 +64,7 @@ namespace Hammer
         realViewport.hide();
         realViewport.setParent(nullptr);
         realViewport.setParent(this);
-        realViewport.setGeometry(rect());
+        Platform::SyncAdoptedViewportGeometry(realViewport, rect());
 
         auto* qtEnvironment = AZ::Interface<IHammerQtEnvironment>::Get();
         AZ_Assert(qtEnvironment, "IHammerQtEnvironment must be registered before adopting a HammerWidget");
@@ -77,14 +81,14 @@ namespace Hammer
     void HammerWidget::resizeEvent(QResizeEvent* event)
     {
         QWidget::resizeEvent(event);
-        m_adoptedRealViewport && (m_adoptedRealViewport->setGeometry(rect()), true);
+        m_adoptedRealViewport && (Platform::SyncAdoptedViewportGeometry(*m_adoptedRealViewport, rect()), true);
         InitializeSceneIfReady();
     }
 
     void HammerWidget::showEvent(QShowEvent* event)
     {
         QWidget::showEvent(event);
-        m_adoptedRealViewport && (m_adoptedRealViewport->setGeometry(rect()), true);
+        m_adoptedRealViewport && (Platform::SyncAdoptedViewportGeometry(*m_adoptedRealViewport, rect()), true);
         InitializeSceneIfReady();
     }
 
