@@ -14,12 +14,10 @@ namespace Hammer
 {
     namespace
     {
-        constexpr AZStd::array<AZStd::string_view, 4> DirectViewportClassNames = {
-            "EditorViewportWidget", "HammerWidget", "HammerViewportLayoutWidget", "HammerRenderViewportWidget"
+        constexpr AZStd::array<AZStd::string_view, 3> DirectViewportClassNames = {
+            "HammerWidget", "HammerViewportLayoutWidget", "HammerRenderViewportWidget"
         };
-        constexpr AZStd::array<AZStd::string_view, 3> ParentViewportClassNames = {
-            "EditorViewportWidget", "HammerWidget", "HammerViewportLayoutWidget"
-        };
+        constexpr AZStd::array<AZStd::string_view, 2> ParentViewportClassNames = { "HammerWidget", "HammerViewportLayoutWidget" };
 
         template<size_t N>
         bool ClassNameMatches(AZStd::string_view className, const AZStd::array<AZStd::string_view, N>& names)

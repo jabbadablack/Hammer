@@ -62,11 +62,9 @@ namespace Hammer
         void DestroyViewportCountButtons();
 
         void PrepareEditorChrome();
-        void RestoreEditorChrome();
         QWidget* EmbedViewportPaneAsCentralWidget(
             const char* paneName, const AZStd::function<QWidget*()>& expectedContentAccessor);
         void RestoreViewportPaneToDockWidget(QWidget* content);
-        void ClosePane(const char* paneName);
         void RegisterHotkeyAction(
             const char* actionId, const char* name, const char* description, const char* category, const char* hotkey,
             AZStd::function<void()> callback);

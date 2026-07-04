@@ -106,13 +106,14 @@ namespace Hammer
 
     void HammerEditorSystemComponent::Deactivate()
     {
-        RestoreEditorChrome();
+        AzToolsFramework::SetIconsVisible(true);
 
         DestroyViewportCountButtons();
 
         m_viewportLayoutWidget && (RestoreViewportPaneToDockWidget(m_viewportLayoutWidget), true);
 
-        ClosePane(ViewportPaneName);
+        AzToolsFramework::CloseViewPane(ViewportPaneName);
+        AzToolsFramework::UnregisterViewPane(ViewportPaneName);
         m_viewportLayoutWidget = nullptr;
 
         RemoveMinimumSizeGuard();
@@ -185,7 +186,7 @@ namespace Hammer
     {
         AzToolsFramework::ViewPaneOptions viewOptions;
         viewOptions.isDeletable = true;
-        viewOptions.showInMenu = true;
+        viewOptions.showInMenu = false;
         viewOptions.isDisabledInComponentMode = false;
 
         AzToolsFramework::RegisterViewPane<QWidget>(
@@ -293,11 +294,6 @@ namespace Hammer
              settings.setValue(MigratedStaleLayoutKey, true), true);
     }
 
-    void HammerEditorSystemComponent::RestoreEditorChrome()
-    {
-        AzToolsFramework::SetIconsVisible(true);
-    }
-
     QWidget* HammerEditorSystemComponent::EmbedViewportPaneAsCentralWidget(
         const char* paneName, const AZStd::function<QWidget*()>& expectedContentAccessor)
     {
@@ -363,13 +359,6 @@ namespace Hammer
             "No dock widget was captured to restore the view pane's content into; it may already have been closed");
 
         (m_paneDockWidget && content) && (content->hide(), m_paneDockWidget->setWidget(content), true);
-    }
-
-    void HammerEditorSystemComponent::ClosePane(const char* paneName)
-    {
-        AZ_Assert(paneName, "ClosePane called with a null paneName");
-        AzToolsFramework::CloseViewPane(paneName);
-        AzToolsFramework::UnregisterViewPane(paneName);
     }
 
     void HammerEditorSystemComponent::RegisterHotkeyAction(
