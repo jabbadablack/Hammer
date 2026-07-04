@@ -3,12 +3,14 @@
 
 #include <AzCore/EBus/EBus.h>
 
+#include <Hammer/HammerTypeIds.h>
+
 namespace Hammer
 {
     class HammerViewportRequests
     {
     public:
-        AZ_RTTI(HammerViewportRequests, "{6C6EE216-D4D5-4A2F-9E64-6B1C6E1F62B4}");
+        AZ_RTTI(HammerViewportRequests, HammerViewportRequestBusTypeId);
         virtual ~HammerViewportRequests() = default;
 
         virtual void SetViewportCount(int count) = 0;

@@ -4,12 +4,14 @@
 #include <AzCore/EBus/EBus.h>
 #include <AzFramework/Viewport/ViewportId.h>
 
+#include <Hammer/HammerTypeIds.h>
+
 namespace Hammer
 {
     class HammerEditorActiveViewportRequests
     {
     public:
-        AZ_RTTI(HammerEditorActiveViewportRequests, "{5F4F5A48-21D9-4AB8-AF4A-8F215EED650A}");
+        AZ_RTTI(HammerEditorActiveViewportRequests, HammerEditorViewportBusTypeId);
         virtual ~HammerEditorActiveViewportRequests() = default;
 
         virtual void SetActiveViewportId(AzFramework::ViewportId viewportId) = 0;

@@ -58,6 +58,7 @@ namespace Hammer
         void InitializeScene();
         void ApplyActiveState();
         void ApplyRenderTickState();
+        void SyncAdoptedGeometry();
 
         AtomToolsFramework::RenderViewportWidget* m_viewportWidget = nullptr;
         QWidget* m_adoptedRealViewport = nullptr;

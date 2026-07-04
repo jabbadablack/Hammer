@@ -195,7 +195,7 @@ namespace Hammer
         m_overlaySyncTimer->start(16);
     }
 
-    // Unconditional poll: the base Editor repositions the overlay onto the real viewport every idle
+    // the base editor repositions the overlay onto the real viewport every idle
     // tick regardless of what Hammer does, so this has to keep re-asserting rather than react once.
     void HammerViewportLayoutWidget::SyncViewportUiOverlay()
     {
@@ -206,8 +206,7 @@ namespace Hammer
             (overlay->setGeometry(QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())), true);
     }
 
-    // Fast-path companion to SyncViewportUiOverlay's poll: reacts instantly to the overlay's own
-    // move/resize instead of waiting up to one timer tick, so the overlay doesn't visibly lag.
+    // reacts instantly to the overlay's own move/resize instead of waiting up to one timer tick, so the overlay doesn't lag.
     bool HammerViewportLayoutWidget::eventFilter(QObject* watched, QEvent* event)
     {
         const bool isOverlayMoveOrResize = watched == m_viewportUiOverlayWindow.Peek() && m_activeViewport &&

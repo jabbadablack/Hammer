@@ -64,7 +64,6 @@ namespace Hammer
         realViewport.hide();
         realViewport.setParent(nullptr);
         realViewport.setParent(this);
-        Platform::SyncAdoptedViewportGeometry(realViewport, rect());
 
         auto* qtEnvironment = AZ::Interface<IHammerQtEnvironment>::Get();
         AZ_Assert(qtEnvironment, "IHammerQtEnvironment must be registered before adopting a HammerWidget");
@@ -72,23 +71,35 @@ namespace Hammer
         AZ_Error("HammerWidget", m_viewportWidget, "Could not resolve the adopted real viewport's inner RenderViewportWidget");
         m_viewportWidget && (m_viewportWidget->installEventFilter(this), true);
 
+        SyncAdoptedGeometry();
+
         m_sceneInitialized = true;
 
         ApplyActiveState();
         ApplyRenderTickState();
     }
 
+    // Forces both the adopted widget and its inner render surface to match our own size,
+    // rather than trusting the adopted widget's own internal layout to cascade the resize
+    // down to its render surface on its own.
+    void HammerWidget::SyncAdoptedGeometry()
+    {
+        m_adoptedRealViewport && (Platform::SyncAdoptedViewportGeometry(*m_adoptedRealViewport, rect()), true);
+        m_viewportWidget &&
+            (Platform::SyncAdoptedViewportGeometry(*m_viewportWidget, QRect(QPoint(0, 0), rect().size())), true);
+    }
+
     void HammerWidget::resizeEvent(QResizeEvent* event)
     {
         QWidget::resizeEvent(event);
-        m_adoptedRealViewport && (Platform::SyncAdoptedViewportGeometry(*m_adoptedRealViewport, rect()), true);
+        m_adoptedRealViewport && (SyncAdoptedGeometry(), true);
         InitializeSceneIfReady();
     }
 
     void HammerWidget::showEvent(QShowEvent* event)
     {
         QWidget::showEvent(event);
-        m_adoptedRealViewport && (Platform::SyncAdoptedViewportGeometry(*m_adoptedRealViewport, rect()), true);
+        m_adoptedRealViewport && (SyncAdoptedGeometry(), true);
         InitializeSceneIfReady();
     }
 
