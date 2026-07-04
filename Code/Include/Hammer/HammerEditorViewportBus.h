@@ -8,6 +8,14 @@
 
 namespace Hammer
 {
+    class HammerViewportBusTraits
+        : public AZ::EBusTraits
+    {
+    public:
+        static constexpr AZ::EBusHandlerPolicy HandlerPolicy = AZ::EBusHandlerPolicy::Single;
+        static constexpr AZ::EBusAddressPolicy AddressPolicy = AZ::EBusAddressPolicy::Single;
+    };
+
     class HammerEditorActiveViewportRequests
     {
     public:
@@ -18,13 +26,17 @@ namespace Hammer
         virtual AzFramework::ViewportId GetActiveViewportId() const = 0;
     };
 
-    class HammerEditorActiveViewportRequestBusTraits
-        : public AZ::EBusTraits
+    using HammerEditorActiveViewportRequestBus = AZ::EBus<HammerEditorActiveViewportRequests, HammerViewportBusTraits>;
+
+    class HammerViewportRequests
     {
     public:
-        static constexpr AZ::EBusHandlerPolicy HandlerPolicy = AZ::EBusHandlerPolicy::Single;
-        static constexpr AZ::EBusAddressPolicy AddressPolicy = AZ::EBusAddressPolicy::Single;
+        AZ_RTTI(HammerViewportRequests, HammerViewportRequestBusTypeId);
+        virtual ~HammerViewportRequests() = default;
+
+        virtual void SetViewportCount(int count) = 0;
+        virtual void ToggleMaximizeActiveViewport() = 0;
     };
 
-    using HammerEditorActiveViewportRequestBus = AZ::EBus<HammerEditorActiveViewportRequests, HammerEditorActiveViewportRequestBusTraits>;
+    using HammerViewportRequestBus = AZ::EBus<HammerViewportRequests, HammerViewportBusTraits>;
 } // namespace Hammer

@@ -2,7 +2,7 @@
 
 #include <Clients/HammerSystemComponent.h>
 
-#include <Hammer/HammerViewportRequestBus.h>
+#include <Hammer/HammerEditorViewportBus.h>
 
 #include <AzToolsFramework/ActionManager/ActionManagerRegistrationNotificationBus.h>
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>

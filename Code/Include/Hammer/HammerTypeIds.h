@@ -14,7 +14,7 @@ namespace Hammer
     // so they use the Same TypeId
     inline constexpr const char* HammerEditorModuleTypeId = HammerModuleTypeId;
 
-    // reques bus TypeIds
+    // Request bus TypeIds
     inline constexpr const char* HammerEditorViewportBusTypeId = "{5F4F5A48-21D9-4AB8-AF4A-8F215EED650A}";
     inline constexpr const char* HammerViewportRequestBusTypeId = "{6C6EE216-D4D5-4A2F-9E64-6B1C6E1F62B4}";
 

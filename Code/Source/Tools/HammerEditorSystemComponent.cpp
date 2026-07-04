@@ -277,9 +277,9 @@ namespace Hammer
             int m_count;
         };
         constexpr HotkeyDef layoutHotkeys[] = {
-            { "o3de.action.hammer.viewportLayoutSingle", "Single Viewport", "Ctrl+1", 1 },
-            { "o3de.action.hammer.viewportLayoutDual", "Dual Viewport", "Ctrl+2", 2 },
-            { "o3de.action.hammer.viewportLayoutQuad", "Quad Viewport", "Ctrl+3", 4 },
+            { "o3de.action.hammer.viewportLayoutSingle", "Single Viewport", "F1", 1 },
+            { "o3de.action.hammer.viewportLayoutDual", "Dual Viewport", "F2", 2 },
+            { "o3de.action.hammer.viewportLayoutQuad", "Quad Viewport", "F3", 4 },
         };
 
         for (const HotkeyDef& def : layoutHotkeys)
@@ -295,7 +295,7 @@ namespace Hammer
 
         shell->RegisterHotkeyAction(
             "o3de.action.hammer.viewportToggleMaximize", "Toggle Maximize Viewport",
-            "Maximize or restore the currently active Hammer viewport", "Viewport", "Ctrl+4",
+            "Maximize or restore the currently active Hammer viewport", "Viewport", "F4",
             [this]
             {
                 m_viewportLayoutHandle->ToggleMaximizeActiveViewport();
