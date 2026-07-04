@@ -1,6 +1,7 @@
 #pragma once
 
 #if !defined(Q_MOC_RUN)
+#include <QScopedPointer>
 #include <QWidget>
 #endif
 
@@ -15,6 +16,11 @@
 
 class QGridLayout;
 class QTimer;
+
+namespace Ui
+{
+    class HammerViewportLayoutWidgetClass;
+}
 
 namespace Hammer
 {
@@ -64,6 +70,7 @@ namespace Hammer
         HammerWidget* m_preGameModeActiveViewport = nullptr;
         LazyFind<QWidget> m_viewportUiOverlayWindow;
         QTimer* m_overlaySyncTimer = nullptr;
+        QScopedPointer<Ui::HammerViewportLayoutWidgetClass> m_ui;
         AZStd::array<HammerWidget*, MaxViewportCount> m_gridSlotWidget = {};
         AZStd::optional<int> m_maximizedFromIndex;
         int m_preMaximizeViewportCount = MinViewportCount;

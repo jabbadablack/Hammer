@@ -14,8 +14,11 @@ namespace Hammer
     // so they use the Same TypeId
     inline constexpr const char* HammerEditorModuleTypeId = HammerModuleTypeId;
 
+    // Request bus TypeIds
+    inline constexpr const char* HammerEditorViewportBusTypeId = "{5F4F5A48-21D9-4AB8-AF4A-8F215EED650A}";
+    inline constexpr const char* HammerViewportRequestBusTypeId = "{6C6EE216-D4D5-4A2F-9E64-6B1C6E1F62B4}";
+
     // Interface TypeIds
-    inline constexpr const char* HammerRequestsTypeId = "{355DDE5E-34C4-4C71-B7D4-DAE8CE63B41A}";
     inline constexpr const char* IHammerEditorShellTypeId = "{C3B645D1-9A07-4E45-AD72-E0B240BAF469}";
     inline constexpr const char* IHammerRenderBackendTypeId = "{3BE1BE23-420C-4C12-A9BB-31D8AF0C2D73}";
     inline constexpr const char* IHammerQtEnvironmentTypeId = "{B321B218-A0A0-44F3-B6F5-397328653A45}";

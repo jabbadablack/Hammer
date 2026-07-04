@@ -13,6 +13,7 @@
 #include "Adapters/HammerQtEnvironmentAdapter.h"
 
 #include <AzCore/Interface/Interface.h>
+#include <AzCore/RTTI/BehaviorContext.h>
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzCore/std/containers/array.h>
 
@@ -154,6 +155,16 @@ namespace Hammer
         auto* serializeContext = azrtti_cast<AZ::SerializeContext*>(context);
         serializeContext &&
             (serializeContext->Class<HammerEditorSystemComponent, HammerSystemComponent>()->Version(0), true);
+
+        auto* behaviorContext = azrtti_cast<AZ::BehaviorContext*>(context);
+        behaviorContext &&
+            (behaviorContext->EBus<HammerViewportRequestBus>("HammerViewportRequestBus")
+                 ->Attribute(AZ::Script::Attributes::Scope, AZ::Script::Attributes::ScopeFlags::Automation)
+                 ->Attribute(AZ::Script::Attributes::Category, "Editor")
+                 ->Attribute(AZ::Script::Attributes::Module, "hammer")
+                 ->Event("SetViewportCount", &HammerViewportRequestBus::Events::SetViewportCount)
+                 ->Event("ToggleMaximizeActiveViewport", &HammerViewportRequestBus::Events::ToggleMaximizeActiveViewport),
+             true);
     }
 
     HammerEditorSystemComponent::HammerEditorSystemComponent() = default;
@@ -189,6 +200,7 @@ namespace Hammer
         HammerSystemComponent::Activate();
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
         AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusConnect();
+        HammerViewportRequestBus::Handler::BusConnect();
 
         m_adapters = AZStd::make_unique<HammerAdapterRegistry>();
         AZ_Assert(m_adapters, "Failed to allocate HammerAdapterRegistry");
@@ -217,9 +229,20 @@ namespace Hammer
         m_adapters->Shutdown();
         m_adapters.reset();
 
+        HammerViewportRequestBus::Handler::BusDisconnect();
         AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusDisconnect();
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
         HammerSystemComponent::Deactivate();
+    }
+
+    void HammerEditorSystemComponent::SetViewportCount(int count)
+    {
+        m_viewportLayoutHandle->SetViewportCount(count);
+    }
+
+    void HammerEditorSystemComponent::ToggleMaximizeActiveViewport()
+    {
+        m_viewportLayoutHandle->ToggleMaximizeActiveViewport();
     }
 
     void HammerEditorSystemComponent::NotifyRegisterViews()
@@ -254,9 +277,9 @@ namespace Hammer
             int m_count;
         };
         constexpr HotkeyDef layoutHotkeys[] = {
-            { "o3de.action.hammer.viewportLayoutSingle", "Single Viewport", "Ctrl+1", 1 },
-            { "o3de.action.hammer.viewportLayoutDual", "Dual Viewport", "Ctrl+2", 2 },
-            { "o3de.action.hammer.viewportLayoutQuad", "Quad Viewport", "Ctrl+3", 4 },
+            { "o3de.action.hammer.viewportLayoutSingle", "Single Viewport", "F1", 1 },
+            { "o3de.action.hammer.viewportLayoutDual", "Dual Viewport", "F2", 2 },
+            { "o3de.action.hammer.viewportLayoutQuad", "Quad Viewport", "F3", 4 },
         };
 
         for (const HotkeyDef& def : layoutHotkeys)
@@ -272,7 +295,7 @@ namespace Hammer
 
         shell->RegisterHotkeyAction(
             "o3de.action.hammer.viewportToggleMaximize", "Toggle Maximize Viewport",
-            "Maximize or restore the currently active Hammer viewport", "Viewport", "Ctrl+4",
+            "Maximize or restore the currently active Hammer viewport", "Viewport", "F4",
             [this]
             {
                 m_viewportLayoutHandle->ToggleMaximizeActiveViewport();

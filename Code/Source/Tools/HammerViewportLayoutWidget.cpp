@@ -15,23 +15,19 @@
 #include <QEvent>
 #include <QGridLayout>
 #include <QTimer>
-#include <QVBoxLayout>
+
+#include <Tools/ui_HammerViewportLayoutWidget.h>
 
 namespace Hammer
 {
     HammerViewportLayoutWidget::HammerViewportLayoutWidget(QWidget* parent)
         : QWidget(parent)
         , m_activeViewportTracker(AZStd::make_shared<ActiveViewportTracker>())
+        , m_ui(new Ui::HammerViewportLayoutWidgetClass())
     {
-        QVBoxLayout* outerLayout = new QVBoxLayout(this);
-        outerLayout->setContentsMargins(0, 0, 0, 0);
-        outerLayout->setSpacing(0);
-
-        m_gridContainer = new QWidget(this);
-        m_gridLayout = new QGridLayout(m_gridContainer);
-        m_gridLayout->setContentsMargins(0, 0, 0, 0);
-        m_gridLayout->setSpacing(3);
-        outerLayout->addWidget(m_gridContainer, /*stretch*/ 1);
+        m_ui->setupUi(this);
+        m_gridContainer = m_ui->gridContainer;
+        m_gridLayout = m_ui->gridLayout;
 
         for (int i = 0; i < MaxViewportCount; ++i)
         {
@@ -199,6 +195,8 @@ namespace Hammer
         m_overlaySyncTimer->start(16);
     }
 
+    // the base editor repositions the overlay onto the real viewport every idle
+    // tick regardless of what Hammer does, so this has to keep re-asserting rather than react once.
     void HammerViewportLayoutWidget::SyncViewportUiOverlay()
     {
         QWidget* overlay = m_viewportUiOverlayWindow.Peek();
@@ -208,6 +206,7 @@ namespace Hammer
             (overlay->setGeometry(QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())), true);
     }
 
+    // reacts instantly to the overlay's own move/resize instead of waiting up to one timer tick, so the overlay doesn't lag.
     bool HammerViewportLayoutWidget::eventFilter(QObject* watched, QEvent* event)
     {
         const bool isOverlayMoveOrResize = watched == m_viewportUiOverlayWindow.Peek() && m_activeViewport &&

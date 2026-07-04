@@ -1,12 +1,18 @@
 #pragma once
 
 #if !defined(Q_MOC_RUN)
+#include <QScopedPointer>
 #include <QWidget>
 #endif
 
 namespace AtomToolsFramework
 {
     class RenderViewportWidget;
+}
+
+namespace Ui
+{
+    class HammerWidgetClass;
 }
 
 class QResizeEvent;
@@ -52,9 +58,11 @@ namespace Hammer
         void InitializeScene();
         void ApplyActiveState();
         void ApplyRenderTickState();
+        void SyncAdoptedGeometry();
 
         AtomToolsFramework::RenderViewportWidget* m_viewportWidget = nullptr;
         QWidget* m_adoptedRealViewport = nullptr;
+        QScopedPointer<Ui::HammerWidgetClass> m_ui;
         bool m_sceneInitialized = false;
         bool m_active = false;
         bool m_renderTickEnabled = true;

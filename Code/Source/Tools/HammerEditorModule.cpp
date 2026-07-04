@@ -5,7 +5,7 @@
 
 void InitHammerResources()
 {
-    // We must register our Qt resources (.qrc file) since this is being loaded from a separate module (gem)
+    // register our .qrc file since this is being loaded from a separate gem
     Q_INIT_RESOURCE(Hammer);
 }
 

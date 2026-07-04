@@ -12,12 +12,8 @@ namespace Hammer
 
     void HammerSystemComponent::Reflect(AZ::ReflectContext* context)
     {
-        if (auto serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
-        {
-            serializeContext->Class<HammerSystemComponent, AZ::Component>()
-                ->Version(0)
-                ;
-        }
+        auto* serializeContext = azrtti_cast<AZ::SerializeContext*>(context);
+        serializeContext && (serializeContext->Class<HammerSystemComponent, AZ::Component>()->Version(0), true);
     }
 
     void HammerSystemComponent::GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided)
@@ -38,21 +34,9 @@ namespace Hammer
     {
     }
 
-    HammerSystemComponent::HammerSystemComponent()
-    {
-        if (HammerInterface::Get() == nullptr)
-        {
-            HammerInterface::Register(this);
-        }
-    }
+    HammerSystemComponent::HammerSystemComponent() = default;
 
-    HammerSystemComponent::~HammerSystemComponent()
-    {
-        if (HammerInterface::Get() == this)
-        {
-            HammerInterface::Unregister(this);
-        }
-    }
+    HammerSystemComponent::~HammerSystemComponent() = default;
 
     void HammerSystemComponent::Init()
     {
@@ -60,14 +44,12 @@ namespace Hammer
 
     void HammerSystemComponent::Activate()
     {
-        HammerRequestBus::Handler::BusConnect();
         AZ::TickBus::Handler::BusConnect();
     }
 
     void HammerSystemComponent::Deactivate()
     {
         AZ::TickBus::Handler::BusDisconnect();
-        HammerRequestBus::Handler::BusDisconnect();
     }
 
     void HammerSystemComponent::OnTick([[maybe_unused]] float deltaTime, [[maybe_unused]] AZ::ScriptTimePoint time)

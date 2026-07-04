@@ -4,11 +4,13 @@ set(FILES
     Source/Tools/HammerEditorSystemComponent.h
     Source/Tools/HammerViewportLayoutWidget.cpp
     Source/Tools/HammerViewportLayoutWidget.h
+    Source/Tools/HammerViewportLayoutWidget.ui
     Source/Tools/HammerViewportLayoutHandle.cpp
     Source/Tools/HammerViewportLayoutHandle.h
     Source/Tools/HammerLazyFind.h
     Source/Tools/HammerWidget.cpp
     Source/Tools/HammerWidget.h
+    Source/Tools/HammerWidget.ui
     Source/Tools/HammerViewportManipulatorController.cpp
     Source/Tools/HammerViewportManipulatorController.h
     Source/Tools/HammerEditorViewportSettings.cpp
