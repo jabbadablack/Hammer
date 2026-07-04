@@ -1,5 +1,4 @@
 #include "HammerWidget.h"
-#include "HammerNames.h"
 #include "HammerQtEnvironment.h"
 #include "HammerRenderViewportWidget.h"
 #include "HammerViewportCameraFactory.h"
@@ -16,7 +15,9 @@
 #include <Atom/RPI.Public/ViewportContext.h>
 #include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
+#include <AzCore/Name/Name.h>
 #include <AzCore/std/containers/array.h>
+#include <AzCore/std/string/string.h>
 #include <AzFramework/Scene/Scene.h>
 #include <AzFramework/Scene/SceneSystemInterface.h>
 #include <AzFramework/Viewport/ViewportControllerList.h>
@@ -32,6 +33,11 @@ namespace Hammer
 {
     namespace
     {
+        AZ::Name PerViewportContextName(AzFramework::ViewportId viewportId)
+        {
+            return AZ::Name(AZStd::string::format("Hammer Viewport %u", static_cast<unsigned>(viewportId)));
+        }
+
         void SetOverlayPassEnabled(AZ::RPI::ViewportContextPtr viewportContext, bool enabled)
         {
             AZ::RPI::RenderPipelinePtr pipeline;
@@ -56,7 +62,7 @@ namespace Hammer
             const AZ::Name defaultName = viewportContextManager->GetDefaultViewportContextName();
             const AZ::Name currentName = viewportContext->GetName();
 
-            const AZStd::array<AZ::Name, 2> candidateNames = { Names::PerViewportContextName(viewportId), defaultName };
+            const AZStd::array<AZ::Name, 2> candidateNames = { PerViewportContextName(viewportId), defaultName };
             const AZ::Name& desiredName = candidateNames[static_cast<size_t>(active)];
 
             (currentName != desiredName) && (viewportContextManager->RenameViewportContext(viewportContext, desiredName), true);

@@ -1,8 +1,6 @@
 #include "HammerEditorSystemComponent.h"
 #include "HammerViewportLayoutWidget.h"
 
-#include "HammerNames.h"
-#include "HammerOptionalUtils.h"
 #include "HammerQtEnvironment.h"
 
 #include <AzCore/Interface/Interface.h>
@@ -34,6 +32,8 @@ namespace Hammer
 {
     namespace
     {
+        constexpr const char* ViewportPaneName = "Hammer Viewport";
+
         struct ViewportCountButtonSpec
         {
             int m_count;
@@ -112,9 +112,8 @@ namespace Hammer
 
         m_viewportLayoutWidget && (RestoreViewportPaneToDockWidget(m_viewportLayoutWidget), true);
 
-        ClosePane(Names::ViewportPaneName);
+        ClosePane(ViewportPaneName);
         m_viewportLayoutWidget = nullptr;
-        m_viewportLayoutHandle = AZStd::make_unique<NullViewportLayoutHandle>();
 
         RemoveMinimumSizeGuard();
 
@@ -126,12 +125,12 @@ namespace Hammer
 
     void HammerEditorSystemComponent::SetViewportCount(int count)
     {
-        m_viewportLayoutHandle->SetViewportCount(count);
+        m_viewportLayoutWidget && (m_viewportLayoutWidget->SetViewportCount(count), true);
     }
 
     void HammerEditorSystemComponent::ToggleMaximizeActiveViewport()
     {
-        m_viewportLayoutHandle->ToggleMaximizeActiveViewport();
+        m_viewportLayoutWidget && (m_viewportLayoutWidget->ToggleMaximizeActiveViewport(), true);
     }
 
     void HammerEditorSystemComponent::NotifyRegisterViews()
@@ -169,7 +168,7 @@ namespace Hammer
                 def.m_id, def.m_name, description.c_str(), "Viewport", def.m_hotkey,
                 [this, count = def.m_count]
                 {
-                    m_viewportLayoutHandle->SetViewportCount(count);
+                    SetViewportCount(count);
                 });
         }
 
@@ -178,7 +177,7 @@ namespace Hammer
             "Maximize or restore the currently active Hammer viewport", "Viewport", "F4",
             [this]
             {
-                m_viewportLayoutHandle->ToggleMaximizeActiveViewport();
+                ToggleMaximizeActiveViewport();
             });
     }
 
@@ -190,14 +189,12 @@ namespace Hammer
         viewOptions.isDisabledInComponentMode = false;
 
         AzToolsFramework::RegisterViewPane<QWidget>(
-            Names::ViewportPaneName, "Viewport", viewOptions,
+            ViewportPaneName, "Viewport", viewOptions,
             [this](QWidget* parent) -> QWidget*
             {
-                AZ_Assert(
-                    !m_viewportLayoutWidget, "The '%s' view pane's widget was requested a second time", Names::ViewportPaneName);
+                AZ_Assert(!m_viewportLayoutWidget, "The '%s' view pane's widget was requested a second time", ViewportPaneName);
                 m_viewportLayoutWidget = new HammerViewportLayoutWidget(parent);
                 AZ_Assert(m_viewportLayoutWidget, "Failed to allocate HammerViewportLayoutWidget");
-                m_viewportLayoutHandle = AZStd::make_unique<LiveViewportLayoutHandle>(m_viewportLayoutWidget);
                 return m_viewportLayoutWidget;
             });
     }
@@ -213,17 +210,14 @@ namespace Hammer
         defaultContext &&
             (viewportContextManager->RenameViewportContext(defaultContext, AZ::Name("Hammer Startup Placeholder")), true);
 
-        const AZStd::optional<QWidget*> oldViewport = EmbedViewportPaneAsCentralWidget(
-            Names::ViewportPaneName,
+        QWidget* oldViewport = EmbedViewportPaneAsCentralWidget(
+            ViewportPaneName,
             [this]() -> QWidget*
             {
                 return m_viewportLayoutWidget;
             });
 
-        QWidget* oldViewportPtr = nullptr;
-        oldViewport.has_value() && (oldViewportPtr = *oldViewport, true);
-
-        (oldViewportPtr && m_viewportLayoutWidget) && (m_viewportLayoutWidget->AdoptRealPerspectiveViewport(*oldViewportPtr), true);
+        (oldViewport && m_viewportLayoutWidget) && (m_viewportLayoutWidget->AdoptRealPerspectiveViewport(*oldViewport), true);
     }
 
     void HammerEditorSystemComponent::CreateViewportCountButtons()
@@ -304,7 +298,7 @@ namespace Hammer
         AzToolsFramework::SetIconsVisible(true);
     }
 
-    AZStd::optional<QWidget*> HammerEditorSystemComponent::EmbedViewportPaneAsCentralWidget(
+    QWidget* HammerEditorSystemComponent::EmbedViewportPaneAsCentralWidget(
         const char* paneName, const AZStd::function<QWidget*()>& expectedContentAccessor)
     {
         AZ_Assert(paneName, "EmbedViewportPaneAsCentralWidget called with a null paneName");
@@ -358,7 +352,7 @@ namespace Hammer
         const bool succeeded = viewPaneHost && oldViewport && content && paneDockWidget;
         AZ_Warning(
             "HammerEditorSystemComponent", succeeded, "Could not fully embed the '%s' view pane as the central widget", paneName);
-        return OptionalUtils::OptionalWhen(succeeded, oldViewport);
+        return succeeded ? oldViewport : nullptr;
     }
 
     void HammerEditorSystemComponent::RestoreViewportPaneToDockWidget(QWidget* content)

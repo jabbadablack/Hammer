@@ -5,9 +5,6 @@ set(FILES
     Source/Tools/HammerViewportLayoutWidget.cpp
     Source/Tools/HammerViewportLayoutWidget.h
     Source/Tools/HammerViewportLayoutWidget.ui
-    Source/Tools/HammerViewportLayoutHandle.cpp
-    Source/Tools/HammerViewportLayoutHandle.h
-    Source/Tools/HammerLazyFind.h
     Source/Tools/HammerWidget.cpp
     Source/Tools/HammerWidget.h
     Source/Tools/HammerWidget.ui
@@ -17,8 +14,6 @@ set(FILES
     Source/Tools/HammerEditorViewportSettings.h
     Source/Tools/HammerActiveViewportTracker.cpp
     Source/Tools/HammerActiveViewportTracker.h
-    Source/Tools/HammerNames.h
-    Source/Tools/HammerOptionalUtils.h
     Source/Tools/HammerQtEnvironment.h
     Source/Tools/HammerQtEnvironment.cpp
     Source/Tools/HammerRenderViewportWidget.cpp

@@ -1,7 +1,5 @@
 #include "HammerQtEnvironment.h"
 
-#include "HammerOptionalUtils.h"
-
 #include <AzCore/std/algorithm.h>
 #include <AzCore/std/containers/array.h>
 #include <AzCore/std/string/string_view.h>
@@ -61,7 +59,7 @@ namespace Hammer
                 {
                     return AZStd::string_view(child->metaObject()->className()) == className;
                 });
-            return OptionalUtils::ToOptional(it, children.end()).value_or(nullptr);
+            return it != children.end() ? *it : nullptr;
         }
 
         // dynamic_cast, not azdynamic_cast: T here is a plain Qt/AtomToolsFramework widget type
@@ -77,7 +75,7 @@ namespace Hammer
                 {
                     return dynamic_cast<T*>(child) != nullptr;
                 });
-            return dynamic_cast<T*>(OptionalUtils::ToOptional(it, children.end()).value_or(nullptr));
+            return it != children.end() ? dynamic_cast<T*>(*it) : nullptr;
         }
 
         class MinimumSizeGuardFilter : public QObject
