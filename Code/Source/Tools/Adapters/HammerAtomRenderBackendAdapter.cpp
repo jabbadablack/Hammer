@@ -43,22 +43,6 @@ namespace Hammer
         defaultContext && (m_viewportContextManager.RenameViewportContext(defaultContext, newName), true);
     }
 
-    AZ::RPI::ViewportContextPtr HammerAtomRenderBackendAdapter::FindViewportContextByName(const AZ::Name& name) const
-    {
-        AZ_Assert(!name.IsEmpty(), "FindViewportContextByName called with an empty name");
-        return m_viewportContextManager.GetViewportContextByName(name);
-    }
-
-    void HammerAtomRenderBackendAdapter::SyncActiveCamera(
-        AZ::RPI::ViewportContextPtr hiddenContext, AZ::RPI::ViewportContextPtr activeContext) const
-    {
-        (hiddenContext && activeContext) && (hiddenContext->SetCameraTransform(activeContext->GetCameraTransform()), true);
-
-        AZ::RPI::RenderPipelinePtr pipeline;
-        hiddenContext && (pipeline = hiddenContext->GetCurrentPipeline(), true);
-        pipeline && (pipeline->RemoveFromRenderTick(), true);
-    }
-
     void HammerAtomRenderBackendAdapter::SetOverlayPassEnabled(AZ::RPI::ViewportContextPtr viewportContext, bool enabled) const
     {
         AZ::RPI::RenderPipelinePtr pipeline;

@@ -22,7 +22,9 @@ namespace Hammer
     Q_OBJECT
     public:
         explicit HammerWidget(QWidget* parent);
-        ~HammerWidget() override = default;
+        ~HammerWidget() override;
+
+        static HammerWidget* CreateAdopting(QWidget* parent, QWidget& realViewport);
 
         AtomToolsFramework::RenderViewportWidget* GetViewportWidget() const
         {
@@ -41,12 +43,18 @@ namespace Hammer
         bool eventFilter(QObject* watched, QEvent* event) override;
 
     private:
+        struct AdoptTag
+        {
+        };
+        HammerWidget(QWidget* parent, QWidget& realViewport, AdoptTag);
+
         void InitializeSceneIfReady();
         void InitializeScene();
         void ApplyActiveState();
         void ApplyRenderTickState();
 
         AtomToolsFramework::RenderViewportWidget* m_viewportWidget = nullptr;
+        QWidget* m_adoptedRealViewport = nullptr;
         bool m_sceneInitialized = false;
         bool m_active = false;
         bool m_renderTickEnabled = true;

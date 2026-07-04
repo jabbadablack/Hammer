@@ -1,6 +1,7 @@
 #include "HammerWidget.h"
 #include "HammerViewportManipulatorController.h"
 
+#include <Hammer/IHammerQtEnvironment.h>
 #include <Hammer/IHammerRenderBackend.h>
 
 #include <AzCore/Interface/Interface.h>
@@ -9,6 +10,7 @@
 #include <QEvent>
 #include <QVBoxLayout>
 
+#include <Atom/RHI/RHISystemInterface.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 #include <AzFramework/Scene/Scene.h>
 #include <AzFramework/Scene/SceneSystemInterface.h>
@@ -33,15 +35,56 @@ namespace Hammer
         setLayout(mainLayout);
     }
 
+    HammerWidget::~HammerWidget()
+    {
+        m_adoptedRealViewport && (m_adoptedRealViewport->setParent(nullptr), true);
+
+        const bool neverInitialized = !m_sceneInitialized && m_viewportWidget;
+        AZ_Warning(
+            "HammerWidget", !neverInitialized || AZ::RHI::RHISystemInterface::Get(),
+            "A Hammer viewport was destroyed before ever being shown, and the RHI system has already shut down; skipping "
+            "deferred initialization (a known AtomToolsFramework::RenderViewportWidget shutdown issue may occur)");
+
+        (neverInitialized && AZ::RHI::RHISystemInterface::Get()) && (m_viewportWidget->InitializeViewportContext(), true);
+    }
+
+    HammerWidget* HammerWidget::CreateAdopting(QWidget* parent, QWidget& realViewport)
+    {
+        return new HammerWidget(parent, realViewport, AdoptTag{});
+    }
+
+    HammerWidget::HammerWidget(QWidget* parent, QWidget& realViewport, AdoptTag)
+        : QWidget(parent)
+    {
+        m_adoptedRealViewport = &realViewport;
+        realViewport.hide();
+        realViewport.setParent(nullptr);
+        realViewport.setParent(this);
+        realViewport.setGeometry(rect());
+
+        auto* qtEnvironment = AZ::Interface<IHammerQtEnvironment>::Get();
+        AZ_Assert(qtEnvironment, "IHammerQtEnvironment must be registered before adopting a HammerWidget");
+        qtEnvironment && (m_viewportWidget = qtEnvironment->FindRealRenderViewport(&realViewport), true);
+        AZ_Error("HammerWidget", m_viewportWidget, "Could not resolve the adopted real viewport's inner RenderViewportWidget");
+        m_viewportWidget && (m_viewportWidget->installEventFilter(this), true);
+
+        m_sceneInitialized = true;
+
+        ApplyActiveState();
+        ApplyRenderTickState();
+    }
+
     void HammerWidget::resizeEvent(QResizeEvent* event)
     {
         QWidget::resizeEvent(event);
+        m_adoptedRealViewport && (m_adoptedRealViewport->setGeometry(rect()), true);
         InitializeSceneIfReady();
     }
 
     void HammerWidget::showEvent(QShowEvent* event)
     {
         QWidget::showEvent(event);
+        m_adoptedRealViewport && (m_adoptedRealViewport->setGeometry(rect()), true);
         InitializeSceneIfReady();
     }
 

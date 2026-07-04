@@ -30,6 +30,5 @@ namespace Hammer
 
     private:
         QPointer<QDockWidget> m_paneDockWidget;
-        bool m_originalIconsVisiblePreference = true;
     };
 } // namespace Hammer

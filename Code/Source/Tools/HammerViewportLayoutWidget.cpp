@@ -1,16 +1,20 @@
 #include "HammerViewportLayoutWidget.h"
 #include "HammerActiveViewportTracker.h"
-#include "HammerHiddenViewportProxy.h"
 #include "HammerWidget.h"
 
 #include "HammerOptionalUtils.h"
 
+#include <Hammer/IHammerQtEnvironment.h>
+
+#include <AzToolsFramework/Viewport/ViewportSettings.h>
+
+#include <AzCore/Interface/Interface.h>
 #include <AzCore/std/algorithm.h>
 #include <AzCore/std/containers/array.h>
-#include <AzFramework/Viewport/ViewportId.h>
-#include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 
+#include <QEvent>
 #include <QGridLayout>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace Hammer
@@ -28,9 +32,6 @@ namespace Hammer
         m_gridLayout->setContentsMargins(0, 0, 0, 0);
         m_gridLayout->setSpacing(3);
         outerLayout->addWidget(m_gridContainer, /*stretch*/ 1);
-
-        m_hiddenViewportProxy = new HammerHiddenViewportProxy(*m_gridContainer, this);
-        AZ_Assert(m_hiddenViewportProxy, "Failed to allocate HammerHiddenViewportProxy");
 
         for (int i = 0; i < MaxViewportCount; ++i)
         {
@@ -50,6 +51,24 @@ namespace Hammer
         }
 
         SetViewportCount(1);
+
+        AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler::BusConnect();
+    }
+
+    HammerViewportLayoutWidget::~HammerViewportLayoutWidget()
+    {
+        AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler::BusDisconnect();
+    }
+
+    void HammerViewportLayoutWidget::OnStartGameModeRequest()
+    {
+        m_adoptedViewport && (m_preGameModeActiveViewport = m_activeViewport, ActivateViewport(m_adoptedViewport), true);
+    }
+
+    void HammerViewportLayoutWidget::OnStopGameModeRequest()
+    {
+        m_preGameModeActiveViewport && (ActivateViewport(m_preGameModeActiveViewport), true);
+        m_preGameModeActiveViewport = nullptr;
     }
 
     void HammerViewportLayoutWidget::ActivateViewport(HammerWidget* viewport)
@@ -57,12 +76,45 @@ namespace Hammer
         AZ_Assert(viewport, "ActivateViewport called with a null viewport");
         AZ_Assert(!m_viewports.empty(), "ActivateViewport called with no viewports");
 
-        for (HammerWidget* sibling : m_viewports)
+        const bool alreadyActive = viewport == m_activeViewport;
+
+        (!alreadyActive && m_activeViewport) && (m_activeViewport->SetActive(false), true);
+        !alreadyActive &&
+            (viewport->SetActive(true), m_activeViewport = viewport,
+             AzToolsFramework::SetIconsVisible(viewport == m_adoptedViewport), true);
+    }
+
+    void HammerViewportLayoutWidget::ReconcileGridSlots(int shownCount, int columns)
+    {
+        AZ_Assert(
+            shownCount >= 0 && shownCount <= MaxViewportCount, "ReconcileGridSlots given an out-of-range shownCount %d", shownCount);
+        AZ_Assert(columns == 1 || columns == 2, "ReconcileGridSlots given an unexpected column count %d", columns);
+
+        AZStd::array<HammerWidget*, MaxViewportCount> desiredSlotWidget = {};
+        for (int i = 0; i < shownCount; ++i)
         {
-            (sibling != viewport) && (sibling->SetActive(false), true);
+            desiredSlotWidget[i] = m_viewports[i];
         }
-        viewport->SetActive(true);
-        m_hiddenViewportProxy->SetActiveViewport(*viewport);
+
+        for (HammerWidget* viewport : m_viewports)
+        {
+            const auto oldIt = AZStd::find(m_gridSlotWidget.begin(), m_gridSlotWidget.end(), viewport);
+            const auto newIt = AZStd::find(desiredSlotWidget.begin(), desiredSlotWidget.end(), viewport);
+
+            const bool wasShown = oldIt != m_gridSlotWidget.end();
+            const bool willShow = newIt != desiredSlotWidget.end();
+            const int oldSlot = static_cast<int>(AZStd::distance(m_gridSlotWidget.begin(), oldIt));
+            const int newSlot = static_cast<int>(AZStd::distance(desiredSlotWidget.begin(), newIt));
+            const bool unchanged = wasShown && willShow && (oldSlot == newSlot);
+
+            (wasShown && !unchanged) && (m_gridLayout->removeWidget(viewport), true);
+            (wasShown && !willShow) && (viewport->hide(), viewport->SetRenderTickEnabled(false), true);
+            (willShow && !unchanged) &&
+                (m_gridLayout->addWidget(viewport, newSlot / columns, newSlot % columns), viewport->show(),
+                 viewport->SetRenderTickEnabled(true), true);
+        }
+
+        m_gridSlotWidget = desiredSlotWidget;
     }
 
     void HammerViewportLayoutWidget::SetViewportCount(int count)
@@ -74,21 +126,10 @@ namespace Hammer
 
         (count != 1) && (RestoreMaximizeSwap(), true);
 
-        for (HammerWidget* viewport : m_viewports)
-        {
-            m_gridLayout->removeWidget(viewport);
-            viewport->hide();
-            viewport->SetRenderTickEnabled(false);
-        }
-
         const int columns = 1 + static_cast<int>(count > 1);
         const int shownCount = AZStd::GetMin(count, static_cast<int>(m_viewports.size()));
-        for (int i = 0; i < shownCount; ++i)
-        {
-            m_gridLayout->addWidget(m_viewports[i], i / columns, i % columns);
-            m_viewports[i]->show();
-            m_viewports[i]->SetRenderTickEnabled(true);
-        }
+
+        ReconcileGridSlots(shownCount, columns);
 
         ActivateViewport(m_viewports[0]);
 
@@ -96,10 +137,88 @@ namespace Hammer
         emit ViewportCountChanged(count);
     }
 
-    void HammerViewportLayoutWidget::SetHiddenRealViewport(QWidget& realViewport)
+    void HammerViewportLayoutWidget::AdoptRealPerspectiveViewport(QWidget& realViewport)
     {
-        AZ_Assert(m_hiddenViewportProxy, "SetHiddenRealViewport called before the hidden viewport proxy was constructed");
-        m_hiddenViewportProxy->SetHiddenRealViewport(realViewport);
+        AZ_Assert(!m_adoptedViewport, "AdoptRealPerspectiveViewport called more than once");
+        AZ_Assert(
+            m_viewports.size() == MaxViewportCount, "AdoptRealPerspectiveViewport expects all %d viewports to already exist",
+            MaxViewportCount);
+        AZ_Assert(m_activeViewport == m_viewports[0], "AdoptRealPerspectiveViewport expects slot 0 to still be the active viewport");
+
+        HammerWidget* placeholder = m_viewports[0];
+
+        HammerWidget* adopted = HammerWidget::CreateAdopting(m_gridContainer, realViewport);
+        AZ_Assert(adopted, "Failed to allocate the adopting HammerWidget");
+
+        connect(
+            adopted, &HammerWidget::ViewportFocusRequested, this,
+            [this, adopted]
+            {
+                ActivateViewport(adopted);
+            });
+
+        m_viewports[0] = adopted;
+        m_adoptedViewport = adopted;
+
+        const auto slotIt = AZStd::find(m_gridSlotWidget.begin(), m_gridSlotWidget.end(), placeholder);
+        (slotIt != m_gridSlotWidget.end()) && (*slotIt = adopted, true);
+
+        m_gridLayout->removeWidget(placeholder);
+        placeholder->hide();
+        placeholder->SetRenderTickEnabled(false);
+
+        m_gridLayout->addWidget(adopted, 0, 0);
+        adopted->show();
+        realViewport.show();
+        adopted->SetRenderTickEnabled(true);
+
+        ActivateViewport(adopted);
+
+        delete placeholder;
+
+        ResolveViewportUiOverlayWindow();
+    }
+
+    void HammerViewportLayoutWidget::ResolveViewportUiOverlayWindow()
+    {
+        AZ_Assert(m_adoptedViewport, "ResolveViewportUiOverlayWindow called before the real viewport was adopted");
+
+        auto* qtEnvironment = AZ::Interface<IHammerQtEnvironment>::Get();
+        AZ_Assert(qtEnvironment, "IHammerQtEnvironment must be registered before resolving the ViewportUi overlay window");
+
+        QWidget* overlay = m_viewportUiOverlayWindow.Get(
+            [this, qtEnvironment]() -> QWidget*
+            {
+                return qtEnvironment->FindViewportUiOverlayWindow(m_adoptedViewport);
+            });
+        overlay && (overlay->installEventFilter(this), true);
+
+        AZ_Assert(!m_overlaySyncTimer, "ResolveViewportUiOverlayWindow should only start the sync timer once");
+        m_overlaySyncTimer = new QTimer(this);
+        connect(m_overlaySyncTimer, &QTimer::timeout, this, &HammerViewportLayoutWidget::SyncViewportUiOverlay);
+        m_overlaySyncTimer->start(16);
+    }
+
+    void HammerViewportLayoutWidget::SyncViewportUiOverlay()
+    {
+        QWidget* overlay = m_viewportUiOverlayWindow.Peek();
+        const bool shouldChase = overlay && m_activeViewport && m_activeViewport != m_adoptedViewport;
+
+        shouldChase &&
+            (overlay->setGeometry(QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())), true);
+    }
+
+    bool HammerViewportLayoutWidget::eventFilter(QObject* watched, QEvent* event)
+    {
+        const bool isOverlayMoveOrResize = watched == m_viewportUiOverlayWindow.Peek() && m_activeViewport &&
+            m_activeViewport != m_adoptedViewport && (event->type() == QEvent::Move || event->type() == QEvent::Resize);
+
+        isOverlayMoveOrResize &&
+            (static_cast<QWidget*>(watched)->setGeometry(
+                 QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())),
+             true);
+
+        return QWidget::eventFilter(watched, event);
     }
 
     void HammerViewportLayoutWidget::RestoreMaximizeSwap()
@@ -115,14 +234,9 @@ namespace Hammer
     {
         AZ_Assert(!m_viewports.empty(), "MaximizeActiveViewport called with no viewports to maximize");
         AZ_Assert(!m_maximizedFromIndex.has_value(), "MaximizeActiveViewport called while already maximized");
+        AZ_Assert(m_activeViewport, "MaximizeActiveViewport called before any viewport was ever activated");
 
-        const AzFramework::ViewportId activeId = m_activeViewportTracker->GetActiveViewportId();
-        const auto it = AZStd::find_if(
-            m_viewports.begin(), m_viewports.end(),
-            [activeId](HammerWidget* viewport)
-            {
-                return viewport->GetViewportWidget() && viewport->GetViewportWidget()->GetId() == activeId;
-            });
+        const auto it = AZStd::find(m_viewports.begin(), m_viewports.end(), m_activeViewport);
         const int activeIndex =
             OptionalUtils::OptionalWhen(it != m_viewports.end(), static_cast<int>(AZStd::distance(m_viewports.begin(), it)))
                 .value_or(0);
