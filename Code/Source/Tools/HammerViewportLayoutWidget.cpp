@@ -6,12 +6,15 @@
 
 #include <Hammer/IHammerQtEnvironment.h>
 
+#include <AzToolsFramework/Viewport/ViewportSettings.h>
+
 #include <AzCore/Interface/Interface.h>
 #include <AzCore/std/algorithm.h>
 #include <AzCore/std/containers/array.h>
 
 #include <QEvent>
 #include <QGridLayout>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace Hammer
@@ -58,7 +61,9 @@ namespace Hammer
         const bool alreadyActive = viewport == m_activeViewport;
 
         (!alreadyActive && m_activeViewport) && (m_activeViewport->SetActive(false), true);
-        !alreadyActive && (viewport->SetActive(true), m_activeViewport = viewport, true);
+        !alreadyActive &&
+            (viewport->SetActive(true), m_activeViewport = viewport,
+             AzToolsFramework::SetIconsVisible(viewport == m_adoptedViewport), true);
     }
 
     void HammerViewportLayoutWidget::ReconcileGridSlots(int shownCount, int columns)
@@ -169,6 +174,20 @@ namespace Hammer
                 return qtEnvironment->FindViewportUiOverlayWindow(m_adoptedViewport);
             });
         overlay && (overlay->installEventFilter(this), true);
+
+        AZ_Assert(!m_overlaySyncTimer, "ResolveViewportUiOverlayWindow should only start the sync timer once");
+        m_overlaySyncTimer = new QTimer(this);
+        connect(m_overlaySyncTimer, &QTimer::timeout, this, &HammerViewportLayoutWidget::SyncViewportUiOverlay);
+        m_overlaySyncTimer->start(16);
+    }
+
+    void HammerViewportLayoutWidget::SyncViewportUiOverlay()
+    {
+        QWidget* overlay = m_viewportUiOverlayWindow.Peek();
+        const bool shouldChase = overlay && m_activeViewport && m_activeViewport != m_adoptedViewport;
+
+        shouldChase &&
+            (overlay->setGeometry(QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())), true);
     }
 
     bool HammerViewportLayoutWidget::eventFilter(QObject* watched, QEvent* event)

@@ -30,19 +30,11 @@ namespace Hammer
         (!alreadyMigrated) &&
             (settings.remove("ViewportLayout"), settings.remove("Editor/fancyWindowLayouts/last"),
              settings.setValue(MigratedStaleLayoutKey, true), true);
-
-        m_originalIconsVisiblePreference = AzToolsFramework::IconsVisible();
-        AzToolsFramework::SetIconsVisible(false);
-
-        AZ_Assert(!AzToolsFramework::IconsVisible(), "SetIconsVisible(false) did not take effect");
     }
 
     void HammerAzEditorShellAdapter::RestoreEditorChrome()
     {
-        AzToolsFramework::SetIconsVisible(m_originalIconsVisiblePreference);
-        AZ_Assert(
-            AzToolsFramework::IconsVisible() == m_originalIconsVisiblePreference,
-            "RestoreEditorChrome failed to restore the original IconsVisible preference");
+        AzToolsFramework::SetIconsVisible(true);
     }
 
     void HammerAzEditorShellAdapter::RegisterViewportPane(const char* paneName, const AZStd::function<QWidget*(QWidget*)>& factory)

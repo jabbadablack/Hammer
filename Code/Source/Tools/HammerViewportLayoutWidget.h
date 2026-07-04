@@ -12,6 +12,7 @@
 #include <AzCore/std/smart_ptr/shared_ptr.h>
 
 class QGridLayout;
+class QTimer;
 
 namespace Hammer
 {
@@ -46,6 +47,7 @@ namespace Hammer
         void ActivateViewport(HammerWidget* viewport);
         void ReconcileGridSlots(int shownCount, int columns);
         void ResolveViewportUiOverlayWindow();
+        void SyncViewportUiOverlay();
 
         QGridLayout* m_gridLayout = nullptr;
         QWidget* m_gridContainer = nullptr;
@@ -54,6 +56,7 @@ namespace Hammer
         HammerWidget* m_activeViewport = nullptr;
         HammerWidget* m_adoptedViewport = nullptr;
         LazyFind<QWidget> m_viewportUiOverlayWindow;
+        QTimer* m_overlaySyncTimer = nullptr;
         AZStd::array<HammerWidget*, MaxViewportCount> m_gridSlotWidget = {};
         AZStd::optional<int> m_maximizedFromIndex;
         int m_preMaximizeViewportCount = MinViewportCount;
