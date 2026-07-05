@@ -6,6 +6,7 @@
 #include <AzFramework/Viewport/MultiViewportController.h>
 #include <AzFramework/Viewport/ViewportId.h>
 #include <AzFramework/Visibility/EntityVisibilityQuery.h>
+#include <AzToolsFramework/Manipulators/ManipulatorManager.h>
 #include <AzToolsFramework/Viewport/ViewportMessages.h>
 #include <AzToolsFramework/Viewport/ViewportTypes.h>
 
@@ -77,5 +78,6 @@ namespace Hammer
         AZ::ScriptTimePoint m_currentTime;
         AzFramework::EntityVisibilityQuery m_entityVisibilityQuery;
         AZStd::unique_ptr<HammerEditorViewportSettings> m_viewportSettings;
+        AZStd::shared_ptr<AzToolsFramework::ManipulatorManager> m_manipulatorManager;
     };
 }

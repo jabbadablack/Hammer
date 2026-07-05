@@ -22,6 +22,9 @@ namespace Hammer
         AzFramework::ViewportId viewport, HammerViewportManipulatorController* controller)
         : AzFramework::MultiViewportControllerInstanceInterface<HammerViewportManipulatorController>(viewport, controller)
         , m_viewportSettings(AZStd::make_unique<HammerEditorViewportSettings>(viewport))
+        , m_manipulatorManager(
+              AZStd::make_shared<AzToolsFramework::ManipulatorManager>(
+                  AzToolsFramework::ManipulatorManagerId(aznumeric_cast<AZ::u64>(viewport) + 1)))
     {
         AZ_Assert(controller, "HammerViewportManipulatorControllerInstance constructed with a null controller");
         AZ_Assert(viewport != AzFramework::InvalidViewportId, "HammerViewportManipulatorControllerInstance constructed with an invalid ViewportId");
@@ -223,7 +226,9 @@ namespace Hammer
         float wheelDelta, AzToolsFramework::ViewportInteraction::MouseButton overrideButton, bool& interactionHandled)
     {
         using InteractionBus = AzToolsFramework::EditorInteractionSystemViewportSelectionRequestBus;
+        using AzToolsFramework::ManipulatorManager;
         using AzToolsFramework::ViewportInteraction::MouseButton;
+        using AzToolsFramework::ViewportInteraction::MouseEvent;
         using AzToolsFramework::ViewportInteraction::MouseInteraction;
         using AzToolsFramework::ViewportInteraction::MouseInteractionEvent;
 
@@ -237,25 +242,47 @@ namespace Hammer
             (mouseInteraction.m_mouseButtons.m_mouseButtons = static_cast<AZ::u32>(overrideButton), true);
         mouseInteraction.m_interactionId.m_viewportId = GetViewportId();
 
-        using TargetMemberPtr = decltype(&InteractionBus::Events::InternalHandleMouseManipulatorInteraction);
-        const AZStd::array<TargetMemberPtr, 2> targets = { &InteractionBus::Events::InternalHandleMouseViewportInteraction,
-                                                            &InteractionBus::Events::InternalHandleMouseManipulatorInteraction };
-        const auto targetInteractionEvent = targets[static_cast<size_t>(event.m_priority == ManipulatorPriority)];
-
         auto currentCursorState = AzFramework::SystemCursorState::Unknown;
         AzFramework::InputSystemCursorRequestBus::EventResult(
             currentCursorState, event.m_inputChannel.GetInputDevice().GetInputDeviceId(),
             &AzFramework::InputSystemCursorRequestBus::Events::GetSystemCursorState);
         const bool cursorCaptured = currentCursorState == AzFramework::SystemCursorState::ConstrainedAndHidden;
 
-        const bool isWheel = eventType == AzToolsFramework::ViewportInteraction::MouseEvent::Wheel;
+        const bool isWheel = eventType == MouseEvent::Wheel;
         const AZStd::array<MouseInteractionEvent, 2> candidateEvents = {
             MouseInteractionEvent(mouseInteraction, eventType, cursorCaptured),
             MouseInteractionEvent(mouseInteraction, wheelDelta),
         };
         const MouseInteractionEvent& mouseInteractionEvent = candidateEvents[static_cast<size_t>(isWheel)];
 
-        InteractionBus::EventResult(interactionHandled, AzToolsFramework::GetEntityContextId(), targetInteractionEvent, mouseInteractionEvent);
+        const AZStd::array<AZStd::function<bool()>, 5> manipulatorConsumers = {
+            [this, &mouseInteraction] { return m_manipulatorManager->ConsumeViewportMouseRelease(mouseInteraction); },
+            [this, &mouseInteraction] { return m_manipulatorManager->ConsumeViewportMousePress(mouseInteraction); },
+            [] { return false; },
+            [this, &mouseInteraction] { return m_manipulatorManager->ConsumeViewportMouseWheel(mouseInteraction); },
+            [this, &mouseInteraction]
+            {
+                return m_manipulatorManager->ConsumeViewportMouseMove(mouseInteraction) ==
+                    ManipulatorManager::ConsumeMouseMoveResult::Interacting;
+            },
+        };
+
+        const AZStd::array<AZStd::function<bool()>, 2> dispatchTargets = {
+            [&mouseInteractionEvent]
+            {
+                bool handled = false;
+                InteractionBus::EventResult(
+                    handled, AzToolsFramework::GetEntityContextId(),
+                    &InteractionBus::Events::InternalHandleMouseViewportInteraction, mouseInteractionEvent);
+                return handled;
+            },
+            [&manipulatorConsumers, &mouseInteractionEvent]
+            {
+                return manipulatorConsumers[static_cast<size_t>(mouseInteractionEvent.m_mouseEvent)]();
+            },
+        };
+
+        interactionHandled = dispatchTargets[static_cast<size_t>(event.m_priority == ManipulatorPriority)]();
     }
 
     void HammerViewportManipulatorControllerInstance::ResetInputChannels()
@@ -286,6 +313,14 @@ namespace Hammer
                  AzToolsFramework::GetEntityContextId(), &AzFramework::ViewportDebugDisplayEvents::DisplayViewport,
                  AzFramework::ViewportInfo{ GetViewportId() }, *debugDisplay),
              true);
+
+        AzFramework::CameraState cameraState;
+        AzToolsFramework::ViewportInteraction::ViewportInteractionRequestBus::EventResult(
+            cameraState, GetViewportId(), &AzToolsFramework::ViewportInteraction::ViewportInteractionRequestBus::Events::GetCameraState);
+
+        debugDisplay &&
+            (debugDisplay->DepthTestOff(), m_manipulatorManager->DrawManipulators(*debugDisplay, cameraState, m_mouseInteraction),
+             debugDisplay->DepthTestOn(), true);
     }
 
     bool HammerViewportManipulatorControllerInstance::IsDoubleClick(AzToolsFramework::ViewportInteraction::MouseButton button) const
