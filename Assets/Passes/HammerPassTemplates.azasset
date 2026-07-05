@@ -1,0 +1,25 @@
+{
+    "Type": "JsonSerialization",
+    "Version": 1,
+    "ClassName": "AssetAliasesSourceData",
+    "ClassData": {
+        "AssetPaths": [
+            {
+                "Name": "HammerViewModeBackgroundPassTemplate",
+                "Path": "Passes/HammerViewModeBackground.pass"
+            },
+            {
+                "Name": "HammerWireframePassTemplate",
+                "Path": "Passes/HammerWireframe.pass"
+            },
+            {
+                "Name": "HammerOverdrawCountPassTemplate",
+                "Path": "Passes/HammerOverdrawCount.pass"
+            },
+            {
+                "Name": "HammerOverdrawResolvePassTemplate",
+                "Path": "Passes/HammerOverdrawResolve.pass"
+            }
+        ]
+    }
+}

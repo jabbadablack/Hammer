@@ -94,6 +94,9 @@ namespace Hammer
              Camera::EditorCameraNotificationBus::Broadcast(
                  &Camera::EditorCameraNotificationBus::Events::OnViewportViewEntityChanged, viewport->GetCameraEntityId()),
              true);
+
+        const HammerViewModes activeModes = viewport->GetViewModes();
+        emit ActiveViewModesChanged(activeModes.m_normal, activeModes.m_wireframe, activeModes.m_overdraw);
     }
 
     void HammerViewportLayoutWidget::ReconcileGridSlots(int shownCount, int columns)
@@ -202,6 +205,13 @@ namespace Hammer
         m_overlaySyncTimer = new QTimer(this);
         connect(m_overlaySyncTimer, &QTimer::timeout, this, &HammerViewportLayoutWidget::SyncViewportUiOverlay);
         m_overlaySyncTimer->start(16);
+    }
+
+    void HammerViewportLayoutWidget::SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw)
+    {
+        m_activeViewport &&
+            (m_activeViewport->SetViewModes(HammerViewModes{ normal, wireframe, overdraw }),
+             emit ActiveViewModesChanged(normal, wireframe, overdraw), true);
     }
 
     void HammerViewportLayoutWidget::SyncViewportUiOverlay()

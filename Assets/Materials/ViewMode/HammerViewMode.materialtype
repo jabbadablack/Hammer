@@ -1,0 +1,17 @@
+{
+    "description": "Hammer view-mode debug shaders applied to scene meshes as a material override",
+    "version": 1,
+    "propertyLayout": {
+        "propertyGroups": []
+    },
+    "shaders": [
+        {
+            "file": "../../Shaders/ViewMode/HammerWireframe.shader",
+            "tag": "hammerwireframe"
+        },
+        {
+            "file": "../../Shaders/ViewMode/HammerOverdrawCount.shader",
+            "tag": "hammeroverdraw"
+        }
+    ]
+}

@@ -1,6 +1,8 @@
 #include "HammerEditorSystemComponent.h"
+#include "HammerViewModeFeatureProcessor.h"
 #include "HammerViewportLayoutWidget.h"
 
+#include <Atom/RPI.Public/FeatureProcessorFactory.h>
 #include <AzCore/Interface/Interface.h>
 #include <AzCore/RTTI/BehaviorContext.h>
 #include <AzCore/Serialization/SerializeContext.h>
@@ -13,12 +15,15 @@
 #include <AzToolsFramework/API/ViewPaneOptions.h>
 #include <AzToolsFramework/ActionManager/Action/ActionManagerInterface.h>
 #include <AzToolsFramework/ActionManager/HotKey/HotKeyManagerInterface.h>
+#include <AzToolsFramework/ActionManager/ToolBar/ToolBarManagerInterface.h>
 #include <AzToolsFramework/Editor/ActionManagerIdentifiers/EditorContextIdentifiers.h>
+#include <AzToolsFramework/Editor/ActionManagerIdentifiers/EditorToolBarIdentifiers.h>
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
 
 #include <QDockWidget>
 #include <QIcon>
 #include <QMainWindow>
+#include <QMenu>
 #include <QSettings>
 #include <QStatusBar>
 #include <QToolButton>
@@ -65,6 +70,8 @@ namespace Hammer
 
     void HammerEditorSystemComponent::Reflect(AZ::ReflectContext* context)
     {
+        HammerViewModeFeatureProcessor::Reflect(context);
+
         auto* serializeContext = azrtti_cast<AZ::SerializeContext*>(context);
         serializeContext &&
             (serializeContext->Class<HammerEditorSystemComponent, HammerSystemComponent>()->Version(0), true);
@@ -95,6 +102,11 @@ namespace Hammer
     void HammerEditorSystemComponent::Activate()
     {
         HammerSystemComponent::Activate();
+
+        auto* featureProcessorFactory = AZ::RPI::FeatureProcessorFactory::Get();
+        AZ_Assert(featureProcessorFactory, "HammerEditorSystemComponent activated before the FeatureProcessorFactory");
+        featureProcessorFactory->RegisterFeatureProcessor<HammerViewModeFeatureProcessor>();
+
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
         AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusConnect();
 
@@ -106,6 +118,7 @@ namespace Hammer
         AzToolsFramework::SetIconsVisible(true);
 
         DestroyViewportCountButtons();
+        m_viewModeButtons.clear();
 
         m_viewportLayoutWidget && (RestoreViewportPaneToDockWidget(m_viewportLayoutWidget), true);
 
@@ -115,6 +128,10 @@ namespace Hammer
 
         AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusDisconnect();
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
+
+        auto* featureProcessorFactory = AZ::RPI::FeatureProcessorFactory::Get();
+        featureProcessorFactory && (featureProcessorFactory->UnregisterFeatureProcessor<HammerViewModeFeatureProcessor>(), true);
+
         HammerSystemComponent::Deactivate();
     }
 
@@ -127,6 +144,7 @@ namespace Hammer
     {
         EmbedViewportInCenter();
         CreateViewportCountButtons();
+        ConnectViewModeSwitcherSync();
     }
 
     void HammerEditorSystemComponent::OnActionRegistrationHook()
@@ -149,6 +167,88 @@ namespace Hammer
             {
                 HammerViewportRequestBus::Broadcast(&HammerViewportRequests::ToggleMaximizeActiveViewport);
             });
+    }
+
+    void HammerEditorSystemComponent::OnWidgetActionRegistrationHook()
+    {
+        auto* actionManagerInterface = AZ::Interface<AzToolsFramework::ActionManagerInterface>::Get();
+        AZ_Error("HammerEditorSystemComponent", actionManagerInterface, "Could not find AzToolsFramework::ActionManagerInterface");
+
+        AzToolsFramework::WidgetActionProperties widgetActionProperties;
+        widgetActionProperties.m_name = "Hammer View Mode";
+        widgetActionProperties.m_category = "Viewport";
+
+        actionManagerInterface &&
+            (actionManagerInterface->RegisterWidgetAction(
+                 "o3de.widgetAction.hammer.viewMode", widgetActionProperties,
+                 [this]
+                 {
+                     return CreateViewModeToolBarButton();
+                 }),
+             true);
+    }
+
+    void HammerEditorSystemComponent::OnToolBarBindingHook()
+    {
+        auto* toolBarManagerInterface = AZ::Interface<AzToolsFramework::ToolBarManagerInterface>::Get();
+        AZ_Error("HammerEditorSystemComponent", toolBarManagerInterface, "Could not find AzToolsFramework::ToolBarManagerInterface");
+
+        toolBarManagerInterface &&
+            (toolBarManagerInterface->AddWidgetToToolBar(
+                 EditorIdentifiers::ViewportTopToolBarIdentifier, "o3de.widgetAction.hammer.viewMode", 450),
+             true);
+    }
+
+    QWidget* HammerEditorSystemComponent::CreateViewModeToolBarButton()
+    {
+        QToolButton* button = new QToolButton();
+        button->setIcon(QIcon(QStringLiteral(":/Hammer/toolbar_icon.svg")));
+        button->setToolTip(QObject::tr("View Mode"));
+        button->setPopupMode(QToolButton::InstantPopup);
+        button->setAutoRaise(true);
+
+        QMenu* menu = new QMenu(button);
+        QAction* normalAction = menu->addAction(QObject::tr("Normal"));
+        QAction* wireframeAction = menu->addAction(QObject::tr("Wireframe"));
+        QAction* overdrawAction = menu->addAction(QObject::tr("Quad Overdraw"));
+        for (QAction* action : { normalAction, wireframeAction, overdrawAction })
+        {
+            action->setCheckable(true);
+            QObject::connect(
+                action, &QAction::toggled, button,
+                [normalAction, wireframeAction, overdrawAction]
+                {
+                    HammerViewportRequestBus::Broadcast(
+                        &HammerViewportRequests::SetActiveViewportViewModes, normalAction->isChecked(),
+                        wireframeAction->isChecked(), overdrawAction->isChecked());
+                });
+        }
+        normalAction->setChecked(true);
+        button->setMenu(menu);
+
+        m_viewModeButtons.push_back(button);
+        ConnectViewModeSwitcherSync();
+        return button;
+    }
+
+    void HammerEditorSystemComponent::ConnectViewModeSwitcherSync()
+    {
+        for (QPointer<QToolButton>& button : m_viewModeButtons)
+        {
+            const bool canConnect =
+                m_viewportLayoutWidget && button && !button->property("hammerViewModeSynced").toBool();
+            canConnect &&
+                (QObject::connect(
+                     m_viewportLayoutWidget, &HammerViewportLayoutWidget::ActiveViewModesChanged, button,
+                     [button = button.data()](bool normal, bool wireframe, bool overdraw)
+                     {
+                         const QList<QAction*> actions = button->menu()->actions();
+                         (actions.size() == 3) &&
+                             (actions[0]->setChecked(normal), actions[1]->setChecked(wireframe),
+                              actions[2]->setChecked(overdraw), true);
+                     }),
+                 button->setProperty("hammerViewModeSynced", true), true);
+        }
     }
 
     void HammerEditorSystemComponent::RegisterViewportPane()

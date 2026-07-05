@@ -34,9 +34,11 @@ namespace Hammer
         void AdoptRealPerspectiveViewport(QWidget& realViewport);
         void SetViewportCount(int count) override;
         void ToggleMaximizeActiveViewport() override;
+        void SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw) override;
 
     Q_SIGNALS:
         void ViewportCountChanged(int count);
+        void ActiveViewModesChanged(bool normal, bool wireframe, bool overdraw);
 
     protected:
         bool eventFilter(QObject* watched, QEvent* event) override;

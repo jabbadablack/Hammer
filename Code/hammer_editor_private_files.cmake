@@ -8,5 +8,7 @@ set(FILES
     Source/Tools/HammerWidget.h
     Source/Tools/HammerViewportDisplayController.cpp
     Source/Tools/HammerViewportDisplayController.h
+    Source/Tools/HammerViewModeFeatureProcessor.cpp
+    Source/Tools/HammerViewModeFeatureProcessor.h
     Source/Tools/Hammer.qrc
 )

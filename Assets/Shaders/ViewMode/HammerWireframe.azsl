@@ -1,0 +1,13 @@
+#include "HammerViewModeCommon.azsli"
+
+struct PsOutput
+{
+    float4 m_color : SV_Target0;
+};
+
+PsOutput MainPS(VsOutput IN)
+{
+    PsOutput OUT;
+    OUT.m_color = HammerObjectSrg::m_color;
+    return OUT;
+}

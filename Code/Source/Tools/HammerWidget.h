@@ -16,6 +16,13 @@ class QObject;
 
 namespace Hammer
 {
+    struct HammerViewModes
+    {
+        bool m_normal = true;
+        bool m_wireframe = false;
+        bool m_overdraw = false;
+    };
+
     class HammerRenderViewportWidget : public AtomToolsFramework::RenderViewportWidget
     {
     public:
@@ -39,6 +46,9 @@ namespace Hammer
         void SetActive(bool active);
         void SetRenderTickEnabled(bool enabled);
 
+        void SetViewModes(const HammerViewModes& viewModes);
+        HammerViewModes GetViewModes() const;
+
         AZ::EntityId GetCameraEntityId() const;
 
     Q_SIGNALS:
@@ -59,6 +69,7 @@ namespace Hammer
         void InitializeScene();
         void ApplyActiveState();
         void ApplyRenderTickState();
+        void ApplyViewModes();
         void SyncAdoptedGeometry();
         void SetupCamera();
 
@@ -68,6 +79,7 @@ namespace Hammer
         QWidget* m_adoptedRealViewport = nullptr;
         AZ::EntityId m_cameraEntityId;
         AzFramework::ViewportControllerPtr m_cameraController;
+        HammerViewModes m_viewModes;
         bool m_sceneInitialized = false;
         bool m_active = false;
         bool m_renderTickEnabled = true;
