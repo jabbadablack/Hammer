@@ -84,16 +84,6 @@ namespace Hammer
         incompatible.push_back(AZ_CRC_CE("HammerEditorService"));
     }
 
-    void HammerEditorSystemComponent::GetRequiredServices([[maybe_unused]] AZ::ComponentDescriptor::DependencyArrayType& required)
-    {
-        BaseSystemComponent::GetRequiredServices(required);
-    }
-
-    void HammerEditorSystemComponent::GetDependentServices([[maybe_unused]] AZ::ComponentDescriptor::DependencyArrayType& dependent)
-    {
-        BaseSystemComponent::GetDependentServices(dependent);
-    }
-
     void HammerEditorSystemComponent::Activate()
     {
         HammerSystemComponent::Activate();
@@ -115,8 +105,6 @@ namespace Hammer
         AzToolsFramework::CloseViewPane(ViewportPaneName);
         AzToolsFramework::UnregisterViewPane(ViewportPaneName);
         m_viewportLayoutWidget = nullptr;
-
-        RemoveMinimumSizeGuard();
 
         HammerViewportRequestBus::Handler::BusDisconnect();
         AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusDisconnect();
@@ -141,8 +129,6 @@ namespace Hammer
 
     void HammerEditorSystemComponent::NotifyEditorInitialized()
     {
-        InstallMinimumSizeGuard();
-
         EmbedViewportInCenter();
         CreateViewportCountButtons();
     }

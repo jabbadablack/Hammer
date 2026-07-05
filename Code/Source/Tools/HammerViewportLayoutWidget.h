@@ -10,7 +10,8 @@
 
 #include <AzCore/std/containers/array.h>
 #include <AzCore/std/containers/vector.h>
-#include <AzCore/std/smart_ptr/shared_ptr.h>
+
+#include <Hammer/HammerEditorViewportBus.h>
 
 class QGridLayout;
 class QTimer;
@@ -23,12 +24,12 @@ namespace Ui
 namespace Hammer
 {
     class HammerWidget;
-    class ActiveViewportTracker;
 
     class HammerViewportLayoutWidget
         : public QWidget
         , private AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler
         , private Camera::EditorCameraRequestBus::Handler
+        , private HammerEditorActiveViewportRequestBus::Handler
     {
         Q_OBJECT
     public:
@@ -60,6 +61,9 @@ namespace Hammer
         void OnStartGameModeRequest() override;
         void OnStopGameModeRequest() override;
 
+        void SetActiveViewportId(AzFramework::ViewportId viewportId) override;
+        AzFramework::ViewportId GetActiveViewportId() const override;
+
         void SetViewFromEntityPerspective(const AZ::EntityId& entityId) override;
         AZ::EntityId GetCurrentViewEntityId() override;
         bool GetActiveCameraPosition(AZ::Vector3& cameraPos) override;
@@ -70,7 +74,7 @@ namespace Hammer
         QGridLayout* m_gridLayout = nullptr;
         QWidget* m_gridContainer = nullptr;
         AZStd::vector<HammerWidget*> m_viewports;
-        AZStd::shared_ptr<ActiveViewportTracker> m_activeViewportTracker;
+        AzFramework::ViewportId m_activeViewportId = AzFramework::InvalidViewportId;
         HammerWidget* m_activeViewport = nullptr;
         HammerWidget* m_adoptedViewport = nullptr;
         HammerWidget* m_preGameModeActiveViewport = nullptr;

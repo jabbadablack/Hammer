@@ -2,8 +2,8 @@
 
 #include <Hammer/HammerEditorViewportBus.h>
 
-#include <AzToolsFramework/API/SettingsRegistryUtils.h>
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
+#include <Editor/EditorViewportSettings.h>
 
 namespace Hammer
 {
@@ -28,57 +28,52 @@ namespace Hammer
 
     bool HammerEditorViewportSettings::GridSnappingEnabled() const
     {
-        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/GridSnapping", true);
+        return SandboxEditor::GridSnappingEnabled();
     }
 
     float HammerEditorViewportSettings::GridSize() const
     {
-        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/GridSize", 0.1));
+        return SandboxEditor::GridSnappingSize();
     }
 
     bool HammerEditorViewportSettings::ShowGrid() const
     {
-        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/ShowGrid", false);
+        return SandboxEditor::ShowingGrid();
     }
 
     bool HammerEditorViewportSettings::AngleSnappingEnabled() const
     {
-        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/AngleSnapping", false);
+        return SandboxEditor::AngleSnappingEnabled();
     }
 
     float HammerEditorViewportSettings::AngleStep() const
     {
-        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/AngleSize", 5.0));
+        return SandboxEditor::AngleSnappingSize();
     }
 
     float HammerEditorViewportSettings::ManipulatorLineBoundWidth() const
     {
-        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Manipulator/LineBoundWidth", 0.1));
+        return SandboxEditor::ManipulatorLineBoundWidth();
     }
 
     float HammerEditorViewportSettings::ManipulatorCircleBoundWidth() const
     {
-        return aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Manipulator/CircleBoundWidth", 0.1));
+        return SandboxEditor::ManipulatorCircleBoundWidth();
     }
 
     bool HammerEditorViewportSettings::StickySelectEnabled() const
     {
-        return AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/StickySelect", false);
+        return SandboxEditor::StickySelectEnabled();
     }
 
     AZ::Vector3 HammerEditorViewportSettings::DefaultEditorCameraPosition() const
     {
-        return AZ::Vector3(
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/x", 0.0)),
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/y", -10.0)),
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPosition/z", 4.0)));
+        return SandboxEditor::CameraDefaultEditorPosition();
     }
 
     AZ::Vector2 HammerEditorViewportSettings::DefaultEditorCameraOrientation() const
     {
-        return AZ::Vector2(
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingPitch", 0.0)),
-            aznumeric_cast<float>(AzToolsFramework::GetRegistry("/Amazon/Preferences/Editor/Camera/DefaultStartingYaw", 0.0)));
+        return SandboxEditor::CameraDefaultEditorOrientation();
     }
 
     bool HammerEditorViewportSettings::IconsVisible() const

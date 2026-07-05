@@ -1,10 +1,10 @@
 #include "HammerViewportLayoutWidget.h"
-#include "HammerActiveViewportTracker.h"
 #include "HammerWidget.h"
 
 #include "HammerQtEnvironment.h"
 
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
+#include <Editor/EditorViewportSettings.h>
 
 #include <AzCore/Component/TransformBus.h>
 #include <AzCore/std/algorithm.h>
@@ -21,9 +21,13 @@ namespace Hammer
 {
     HammerViewportLayoutWidget::HammerViewportLayoutWidget(QWidget* parent)
         : QWidget(parent)
-        , m_activeViewportTracker(AZStd::make_shared<ActiveViewportTracker>())
         , m_ui(new Ui::HammerViewportLayoutWidgetClass())
     {
+        AZ_Assert(
+            !HammerEditorActiveViewportRequestBus::HasHandlers(),
+            "HammerViewportLayoutWidget constructed while another HammerEditorActiveViewportRequestBus handler exists");
+        HammerEditorActiveViewportRequestBus::Handler::BusConnect();
+
         m_ui->setupUi(this);
         m_gridContainer = m_ui->gridContainer;
         m_gridLayout = m_ui->gridLayout;
@@ -55,6 +59,17 @@ namespace Hammer
     {
         Camera::EditorCameraRequestBus::Handler::BusDisconnect();
         AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler::BusDisconnect();
+        HammerEditorActiveViewportRequestBus::Handler::BusDisconnect();
+    }
+
+    void HammerViewportLayoutWidget::SetActiveViewportId(AzFramework::ViewportId viewportId)
+    {
+        m_activeViewportId = viewportId;
+    }
+
+    AzFramework::ViewportId HammerViewportLayoutWidget::GetActiveViewportId() const
+    {
+        return m_activeViewportId;
     }
 
     void HammerViewportLayoutWidget::OnStartGameModeRequest()
@@ -172,8 +187,6 @@ namespace Hammer
         const auto slotIt = AZStd::find(m_gridSlotWidget.begin(), m_gridSlotWidget.end(), placeholder);
         (slotIt != m_gridSlotWidget.end()) && (*slotIt = adopted, true);
 
-        // m_gridLayout->removeWidget(placeholder);
-        // placeholder->hide();
         placeholder->SetRenderTickEnabled(false);
 
         m_gridLayout->addWidget(adopted, 0, 0);
@@ -201,8 +214,6 @@ namespace Hammer
         m_overlaySyncTimer->start(16);
     }
 
-    // the base editor repositions the overlay onto the real viewport every idle
-    // tick regardless of what Hammer does, so this has to keep re-asserting rather than react once.
     void HammerViewportLayoutWidget::SyncViewportUiOverlay()
     {
         const bool shouldChase = m_viewportUiOverlayWindow && m_activeViewport && m_activeViewport != m_adoptedViewport;
@@ -212,7 +223,6 @@ namespace Hammer
              true);
     }
 
-    // reacts instantly to the overlay's own move/resize instead of waiting up to one timer tick, so the overlay doesn't lag.
     bool HammerViewportLayoutWidget::eventFilter(QObject* watched, QEvent* event)
     {
         const bool isOverlayMoveOrResize = watched == m_viewportUiOverlayWindow && m_activeViewport &&
@@ -312,7 +322,7 @@ namespace Hammer
 
     AZStd::optional<float> HammerViewportLayoutWidget::GetCameraFoV()
     {
-        return 60.0f;
+        return SandboxEditor::CameraDefaultFovRadians();
     }
 
     bool HammerViewportLayoutWidget::GetActiveCameraState(AzFramework::CameraState& cameraState)

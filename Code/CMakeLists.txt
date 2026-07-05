@@ -145,8 +145,8 @@ if(PAL_TRAIT_BUILD_HOST_TOOLS)
                 Gem::Atom_RPI.Edit
                 Gem::Atom_RPI.Public
                 Gem::Atom_Feature_Common.Public
-                Gem::AtomViewportDisplayInfo
-                Gem::EditorModeFeedback.Editor.Static
+                Legacy::EditorLib
+                Legacy::Editor.Headers
     )
 
     ly_add_target(

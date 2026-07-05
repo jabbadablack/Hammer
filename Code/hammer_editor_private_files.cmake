@@ -8,12 +8,10 @@ set(FILES
     Source/Tools/HammerWidget.cpp
     Source/Tools/HammerWidget.h
     Source/Tools/HammerWidget.ui
-    Source/Tools/HammerViewportManipulatorController.cpp
-    Source/Tools/HammerViewportManipulatorController.h
+    Source/Tools/HammerViewportDisplayController.cpp
+    Source/Tools/HammerViewportDisplayController.h
     Source/Tools/HammerEditorViewportSettings.cpp
     Source/Tools/HammerEditorViewportSettings.h
-    Source/Tools/HammerActiveViewportTracker.cpp
-    Source/Tools/HammerActiveViewportTracker.h
     Source/Tools/HammerQtEnvironment.h
     Source/Tools/HammerQtEnvironment.cpp
     Source/Tools/HammerRenderViewportWidget.cpp
