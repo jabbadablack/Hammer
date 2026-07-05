@@ -6,8 +6,10 @@
 
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
 
+#include <AzCore/Component/TransformBus.h>
 #include <AzCore/std/algorithm.h>
 #include <AzCore/std/containers/array.h>
+#include <AzFramework/Viewport/CameraState.h>
 
 #include <QEvent>
 #include <QGridLayout>
@@ -46,10 +48,12 @@ namespace Hammer
         SetViewportCount(1);
 
         AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler::BusConnect();
+        Camera::EditorCameraRequestBus::Handler::BusConnect();
     }
 
     HammerViewportLayoutWidget::~HammerViewportLayoutWidget()
     {
+        Camera::EditorCameraRequestBus::Handler::BusDisconnect();
         AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler::BusDisconnect();
     }
 
@@ -74,7 +78,10 @@ namespace Hammer
         (!alreadyActive && m_activeViewport) && (m_activeViewport->SetActive(false), true);
         !alreadyActive &&
             (viewport->SetActive(true), m_activeViewport = viewport,
-             AzToolsFramework::SetIconsVisible(viewport == m_adoptedViewport), true);
+             AzToolsFramework::SetIconsVisible(viewport == m_adoptedViewport),
+             Camera::EditorCameraNotificationBus::Broadcast(
+                 &Camera::EditorCameraNotificationBus::Events::OnViewportViewEntityChanged, viewport->GetCameraEntityId()),
+             true);
     }
 
     void HammerViewportLayoutWidget::ReconcileGridSlots(int shownCount, int columns)
@@ -82,6 +89,9 @@ namespace Hammer
         AZ_Assert(
             shownCount >= 0 && shownCount <= MaxViewportCount, "ReconcileGridSlots given an out-of-range shownCount %d", shownCount);
         AZ_Assert(columns == 1 || columns == 2, "ReconcileGridSlots given an unexpected column count %d", columns);
+
+        m_adoptedViewportHiddenBehindMaximize &&
+            (m_gridLayout->removeWidget(m_adoptedViewport), m_adoptedViewportHiddenBehindMaximize = false, true);
 
         AZStd::array<HammerWidget*, MaxViewportCount> desiredSlotWidget = {};
         for (int i = 0; i < shownCount; ++i)
@@ -99,9 +109,15 @@ namespace Hammer
             const int oldSlot = static_cast<int>(AZStd::distance(m_gridSlotWidget.begin(), oldIt));
             const int newSlot = static_cast<int>(AZStd::distance(desiredSlotWidget.begin(), newIt));
             const bool unchanged = wasShown && willShow && (oldSlot == newSlot);
+            const bool hidingAdoptedWhileMaximized =
+                wasShown && !willShow && viewport == m_adoptedViewport && m_maximizedFromIndex != -1;
 
             (wasShown && !unchanged) && (m_gridLayout->removeWidget(viewport), true);
-            (wasShown && !willShow) && (viewport->hide(), viewport->SetRenderTickEnabled(false), true);
+            (wasShown && !willShow && !hidingAdoptedWhileMaximized) &&
+                (viewport->hide(), viewport->SetRenderTickEnabled(false), true);
+            hidingAdoptedWhileMaximized &&
+                (m_gridLayout->addWidget(viewport, 0, 0), viewport->lower(), viewport->show(),
+                 viewport->SetRenderTickEnabled(true), m_adoptedViewportHiddenBehindMaximize = true, true);
             (willShow && !unchanged) &&
                 (m_gridLayout->addWidget(viewport, newSlot / columns, newSlot % columns), viewport->show(),
                  viewport->SetRenderTickEnabled(true), true);
@@ -156,8 +172,8 @@ namespace Hammer
         const auto slotIt = AZStd::find(m_gridSlotWidget.begin(), m_gridSlotWidget.end(), placeholder);
         (slotIt != m_gridSlotWidget.end()) && (*slotIt = adopted, true);
 
-        m_gridLayout->removeWidget(placeholder);
-        placeholder->hide();
+        // m_gridLayout->removeWidget(placeholder);
+        // placeholder->hide();
         placeholder->SetRenderTickEnabled(false);
 
         m_gridLayout->addWidget(adopted, 0, 0);
@@ -256,5 +272,57 @@ namespace Hammer
             &HammerViewportLayoutWidget::MaximizeActiveViewport, &HammerViewportLayoutWidget::RestoreFromMaximize
         };
         (this->*Actions[static_cast<size_t>(m_maximizedFromIndex != -1)])();
+    }
+
+    void HammerViewportLayoutWidget::SetViewFromEntityPerspective(const AZ::EntityId& entityId)
+    {
+        const auto it = AZStd::find_if(
+            m_viewports.begin(), m_viewports.end(),
+            [&entityId](HammerWidget* viewport)
+            {
+                return viewport->GetCameraEntityId() == entityId;
+            });
+        (it != m_viewports.end()) && (ActivateViewport(*it), true);
+    }
+
+    AZ::EntityId HammerViewportLayoutWidget::GetCurrentViewEntityId()
+    {
+        return m_activeViewport ? m_activeViewport->GetCameraEntityId() : AZ::EntityId();
+    }
+
+    bool HammerViewportLayoutWidget::GetActiveCameraPosition(AZ::Vector3& cameraPos)
+    {
+        const bool hasActiveCamera = m_activeViewport && m_activeViewport->GetCameraEntityId().IsValid();
+        hasActiveCamera &&
+            (AZ::TransformBus::EventResult(
+                 cameraPos, m_activeViewport->GetCameraEntityId(), &AZ::TransformBus::Events::GetWorldTranslation),
+             true);
+        return hasActiveCamera;
+    }
+
+    AZStd::optional<AZ::Transform> HammerViewportLayoutWidget::GetActiveCameraTransform()
+    {
+        const bool hasActiveCamera = m_activeViewport && m_activeViewport->GetCameraEntityId().IsValid();
+        AZ::Transform transform = AZ::Transform::CreateIdentity();
+        hasActiveCamera &&
+            (AZ::TransformBus::EventResult(transform, m_activeViewport->GetCameraEntityId(), &AZ::TransformBus::Events::GetWorldTM),
+             true);
+        return hasActiveCamera ? AZStd::optional<AZ::Transform>(transform) : AZStd::nullopt;
+    }
+
+    AZStd::optional<float> HammerViewportLayoutWidget::GetCameraFoV()
+    {
+        return 60.0f;
+    }
+
+    bool HammerViewportLayoutWidget::GetActiveCameraState(AzFramework::CameraState& cameraState)
+    {
+        const bool hasActiveCamera = m_activeViewport && m_activeViewport->GetCameraEntityId().IsValid();
+        AZ::Transform transform = AZ::Transform::CreateIdentity();
+        hasActiveCamera &&
+            (AZ::TransformBus::EventResult(transform, m_activeViewport->GetCameraEntityId(), &AZ::TransformBus::Events::GetWorldTM),
+             true);
+        hasActiveCamera && (cameraState = AzFramework::CreateDefaultCamera(transform, AzFramework::ScreenSize(1, 1)), true);
+        return hasActiveCamera;
     }
 } // namespace Hammer
