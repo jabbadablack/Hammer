@@ -1,14 +1,16 @@
 #pragma once
 
-#include <AzCore/Component/Component.h>
+#include <AzToolsFramework/ToolsComponents/EditorComponentBase.h>
+
+#include <Hammer/HammerTypeIds.h>
 
 namespace Hammer
 {
     class HammerViewportCameraComponent
-        : public AZ::Component
+        : public AzToolsFramework::Components::EditorComponentBase
     {
     public:
-        AZ_COMPONENT_DECL(HammerViewportCameraComponent);
+        AZ_EDITOR_COMPONENT(HammerViewportCameraComponent, HammerViewportCameraComponentTypeId);
 
         static void Reflect(AZ::ReflectContext* context);
 

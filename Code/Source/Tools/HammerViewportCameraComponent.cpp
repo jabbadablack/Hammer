@@ -3,16 +3,14 @@
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzFramework/Components/CameraBus.h>
 
-#include <Hammer/HammerTypeIds.h>
-
 namespace Hammer
 {
-    AZ_COMPONENT_IMPL(HammerViewportCameraComponent, "HammerViewportCameraComponent", HammerViewportCameraComponentTypeId);
-
     void HammerViewportCameraComponent::Reflect(AZ::ReflectContext* context)
     {
         auto* serializeContext = azrtti_cast<AZ::SerializeContext*>(context);
-        serializeContext && (serializeContext->Class<HammerViewportCameraComponent, AZ::Component>()->Version(0), true);
+        serializeContext &&
+            (serializeContext->Class<HammerViewportCameraComponent, AzToolsFramework::Components::EditorComponentBase>()->Version(0),
+             true);
     }
 
     void HammerViewportCameraComponent::GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided)
@@ -27,11 +25,13 @@ namespace Hammer
 
     void HammerViewportCameraComponent::Activate()
     {
+        AzToolsFramework::Components::EditorComponentBase::Activate();
         Camera::CameraNotificationBus::Broadcast(&Camera::CameraNotificationBus::Events::OnCameraAdded, GetEntityId());
     }
 
     void HammerViewportCameraComponent::Deactivate()
     {
         Camera::CameraNotificationBus::Broadcast(&Camera::CameraNotificationBus::Events::OnCameraRemoved, GetEntityId());
+        AzToolsFramework::Components::EditorComponentBase::Deactivate();
     }
 } // namespace Hammer
