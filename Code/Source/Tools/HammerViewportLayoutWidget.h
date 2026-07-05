@@ -81,5 +81,6 @@ namespace Hammer
         int m_maximizedFromIndex = -1;
         int m_preMaximizeViewportCount = MinViewportCount;
         int m_currentViewportCount = MinViewportCount;
+        bool m_adoptedViewportHiddenBehindMaximize = false;
     };
 } // namespace Hammer

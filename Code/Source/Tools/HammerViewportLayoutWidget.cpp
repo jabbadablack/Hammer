@@ -90,6 +90,9 @@ namespace Hammer
             shownCount >= 0 && shownCount <= MaxViewportCount, "ReconcileGridSlots given an out-of-range shownCount %d", shownCount);
         AZ_Assert(columns == 1 || columns == 2, "ReconcileGridSlots given an unexpected column count %d", columns);
 
+        m_adoptedViewportHiddenBehindMaximize &&
+            (m_gridLayout->removeWidget(m_adoptedViewport), m_adoptedViewportHiddenBehindMaximize = false, true);
+
         AZStd::array<HammerWidget*, MaxViewportCount> desiredSlotWidget = {};
         for (int i = 0; i < shownCount; ++i)
         {
@@ -106,9 +109,15 @@ namespace Hammer
             const int oldSlot = static_cast<int>(AZStd::distance(m_gridSlotWidget.begin(), oldIt));
             const int newSlot = static_cast<int>(AZStd::distance(desiredSlotWidget.begin(), newIt));
             const bool unchanged = wasShown && willShow && (oldSlot == newSlot);
+            const bool hidingAdoptedWhileMaximized =
+                wasShown && !willShow && viewport == m_adoptedViewport && m_maximizedFromIndex != -1;
 
             (wasShown && !unchanged) && (m_gridLayout->removeWidget(viewport), true);
-            (wasShown && !willShow) && (viewport->hide(), viewport->SetRenderTickEnabled(false), true);
+            (wasShown && !willShow && !hidingAdoptedWhileMaximized) &&
+                (viewport->hide(), viewport->SetRenderTickEnabled(false), true);
+            hidingAdoptedWhileMaximized &&
+                (m_gridLayout->addWidget(viewport, 0, 0), viewport->lower(), viewport->show(),
+                 viewport->SetRenderTickEnabled(true), m_adoptedViewportHiddenBehindMaximize = true, true);
             (willShow && !unchanged) &&
                 (m_gridLayout->addWidget(viewport, newSlot / columns, newSlot % columns), viewport->show(),
                  viewport->SetRenderTickEnabled(true), true);
@@ -163,8 +172,8 @@ namespace Hammer
         const auto slotIt = AZStd::find(m_gridSlotWidget.begin(), m_gridSlotWidget.end(), placeholder);
         (slotIt != m_gridSlotWidget.end()) && (*slotIt = adopted, true);
 
-        m_gridLayout->removeWidget(placeholder);
-        placeholder->hide();
+        // m_gridLayout->removeWidget(placeholder);
+        // placeholder->hide();
         placeholder->SetRenderTickEnabled(false);
 
         m_gridLayout->addWidget(adopted, 0, 0);
