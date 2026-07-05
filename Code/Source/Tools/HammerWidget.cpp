@@ -33,11 +33,6 @@ namespace Hammer
 {
     namespace
     {
-        AZ::Name PerViewportContextName(AzFramework::ViewportId viewportId)
-        {
-            return AZ::Name(AZStd::string::format("Hammer Viewport %u", static_cast<unsigned>(viewportId)));
-        }
-
         void SetOverlayPassEnabled(AZ::RPI::ViewportContextPtr viewportContext, bool enabled)
         {
             AZ::RPI::RenderPipelinePtr pipeline;
@@ -51,7 +46,8 @@ namespace Hammer
             twoDPass && (twoDPass->SetEnabled(enabled), true);
         }
 
-        void SyncViewportContextName(AZ::RPI::ViewportContextPtr viewportContext, AzFramework::ViewportId viewportId, bool active)
+        void SyncViewportContextName(
+            AZ::RPI::ViewportContextPtr viewportContext, AzFramework::ViewportId viewportId, bool active, bool isAdoptedViewport)
         {
             AZ_Assert(viewportContext, "SyncViewportContextName called with a null ViewportContext");
             AZ_Assert(viewportId != AzFramework::InvalidViewportId, "SyncViewportContextName called with an invalid ViewportId");
@@ -62,10 +58,8 @@ namespace Hammer
             const AZ::Name defaultName = viewportContextManager->GetDefaultViewportContextName();
             const AZ::Name currentName = viewportContext->GetName();
 
-            const AZStd::array<AZ::Name, 2> candidateNames = { PerViewportContextName(viewportId), defaultName };
-            const AZ::Name& desiredName = candidateNames[static_cast<size_t>(active)];
-
-            (currentName != desiredName) && (viewportContextManager->RenameViewportContext(viewportContext, desiredName), true);
+            (isAdoptedViewport && active && currentName != defaultName) &&
+                (viewportContextManager->RenameViewportContext(viewportContext, defaultName), true);
         }
 
         void AddToRenderTick(AZ::RPI::RenderPipeline& pipeline)
@@ -196,7 +190,7 @@ namespace Hammer
 
         AZ::RPI::ViewportContextPtr viewportContext = m_viewportWidget->GetViewportContext();
         SetOverlayPassEnabled(viewportContext, m_active);
-        SyncViewportContextName(viewportContext, m_viewportWidget->GetId(), m_active);
+        SyncViewportContextName(viewportContext, m_viewportWidget->GetId(), m_active, m_adoptedRealViewport != nullptr);
     }
 
     void HammerWidget::InitializeSceneIfReady()
