@@ -9,10 +9,8 @@
 #include <Hammer/HammerEditorViewportBus.h>
 #endif
 
-class QAction;
 class QGridLayout;
 class QTimer;
-class QToolButton;
 
 namespace Hammer
 {
@@ -36,9 +34,11 @@ namespace Hammer
         void AdoptRealPerspectiveViewport(QWidget& realViewport);
         void SetViewportCount(int count) override;
         void ToggleMaximizeActiveViewport() override;
+        void SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw) override;
 
     Q_SIGNALS:
         void ViewportCountChanged(int count);
+        void ActiveViewModesChanged(bool normal, bool wireframe, bool overdraw);
 
     protected:
         bool eventFilter(QObject* watched, QEvent* event) override;
@@ -51,9 +51,6 @@ namespace Hammer
         void ReconcileGridSlots(int shownCount, int columns);
         void ResolveViewportUiOverlayWindow();
         void SyncViewportUiOverlay();
-        void BuildViewModeSwitcher();
-        void SyncViewModeSwitcher();
-        void ApplyViewModesFromSwitcher();
 
         void OnStartGameModeRequest() override;
         void OnStopGameModeRequest() override;
@@ -77,11 +74,6 @@ namespace Hammer
         HammerWidget* m_preGameModeActiveViewport = nullptr;
         QWidget* m_viewportUiOverlayWindow = nullptr;
         QTimer* m_overlaySyncTimer = nullptr;
-        QToolButton* m_viewModeButton = nullptr;
-        QAction* m_normalAction = nullptr;
-        QAction* m_wireframeAction = nullptr;
-        QAction* m_overdrawAction = nullptr;
-        bool m_syncingViewModeSwitcher = false;
         AZStd::array<HammerWidget*, MaxViewportCount> m_gridSlotWidget = {};
         int m_maximizedFromIndex = -1;
         int m_preMaximizeViewportCount = MinViewportCount;

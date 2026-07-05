@@ -36,6 +36,7 @@ namespace Hammer
 
         virtual void SetViewportCount(int count) = 0;
         virtual void ToggleMaximizeActiveViewport() = 0;
+        virtual void SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw) = 0;
     };
 
     using HammerViewportRequestBus = AZ::EBus<HammerViewportRequests, HammerViewportBusTraits>;

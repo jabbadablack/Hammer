@@ -110,12 +110,12 @@ namespace Hammer
         auto existingFilter =
             AZ::RPI::PassFilter::CreateWithTemplateName(AZ::Name("HammerWireframePassTemplate"), renderPipeline);
         const bool alreadyInjected = AZ::RPI::PassSystemInterface::Get()->FindFirstPass(existingFilter) != nullptr;
-        const bool anchorsPresent = renderPipeline->FindFirstPass(AZ::Name("AuxGeomPass")) != nullptr &&
+        const bool anchorsPresent = renderPipeline->FindFirstPass(AZ::Name("PostProcessPass")) != nullptr &&
             renderPipeline->FindFirstPass(AZ::Name("DepthPrePass")) != nullptr;
 
         AZ_Warning(
             LogWindow, !defaultView || alreadyInjected || anchorsPresent,
-            "Pipeline '%s' has no AuxGeomPass/DepthPrePass anchors; Hammer view modes are unavailable in it",
+            "Pipeline '%s' has no PostProcessPass/DepthPrePass anchors; Hammer view modes are unavailable in it",
             renderPipeline->GetId().GetCStr());
 
         (defaultView && !alreadyInjected && anchorsPresent && g_passTemplatesLoaded) && (InjectPasses(*renderPipeline), true);
@@ -131,9 +131,9 @@ namespace Hammer
         backgroundRequest.m_templateName = AZ::Name("HammerViewModeBackgroundPassTemplate");
         backgroundRequest.m_passEnabled = false;
         backgroundRequest.AddInputConnection(AZ::RPI::PassConnection{
-            AZ::Name("ColorInputOutput"), AZ::RPI::PassAttachmentRef{ AZ::Name("AuxGeomPass"), AZ::Name("ColorInputOutput") } });
+            AZ::Name("ColorInputOutput"), AZ::RPI::PassAttachmentRef{ AZ::Name("PostProcessPass"), AZ::Name("Output") } });
         AZ::RPI::Ptr<AZ::RPI::Pass> backgroundPass = passSystem->CreatePassFromRequest(&backgroundRequest);
-        backgroundPass && (renderPipeline.AddPassAfter(backgroundPass, AZ::Name("AuxGeomPass")), true);
+        backgroundPass && (renderPipeline.AddPassAfter(backgroundPass, AZ::Name("PostProcessPass")), true);
 
         AZ::RPI::PassRequest wireframeRequest;
         wireframeRequest.m_passName = AZ::Name("HammerWireframePass");
