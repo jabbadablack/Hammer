@@ -381,11 +381,18 @@ namespace Hammer
         return m_viewModes;
     }
 
+    void HammerWidget::SetGameModeSuppressed(bool suppressed)
+    {
+        m_viewModesSuppressed = suppressed;
+        (m_sceneInitialized && m_viewportWidget) && (ApplyViewModes(), true);
+    }
+
     void HammerWidget::ApplyViewModes()
     {
         AZ_Assert(m_viewportWidget, "ApplyViewModes called without an initialized viewport widget");
         AZ_Assert(m_sceneInitialized, "ApplyViewModes called before the scene was initialized");
-        SetViewModePassesEnabled(m_viewportWidget->GetViewportContext(), m_viewModes);
+        SetViewModePassesEnabled(
+            m_viewportWidget->GetViewportContext(), m_viewModesSuppressed ? HammerViewModes{} : m_viewModes);
     }
 
     void HammerWidget::ApplyActiveState()
@@ -406,7 +413,7 @@ namespace Hammer
                  [this, viewportContext](AZ::RPI::RenderPipelinePtr)
                  {
                      SetOverlayPassEnabled(viewportContext, m_active);
-                     SetViewModePassesEnabled(viewportContext, m_viewModes);
+                     ApplyViewModes();
                  }),
              viewportContext->ConnectCurrentPipelineChangedHandler(m_pipelineChangedHandler),
              true);

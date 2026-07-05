@@ -72,10 +72,18 @@ namespace Hammer
     void HammerViewportLayoutWidget::OnStartGameModeRequest()
     {
         m_adoptedViewport && (m_preGameModeActiveViewport = m_activeViewport, ActivateViewport(m_adoptedViewport), true);
+        for (HammerWidget* viewport : m_viewports)
+        {
+            viewport->SetGameModeSuppressed(true);
+        }
     }
 
     void HammerViewportLayoutWidget::OnStopGameModeRequest()
     {
+        for (HammerWidget* viewport : m_viewports)
+        {
+            viewport->SetGameModeSuppressed(false);
+        }
         m_preGameModeActiveViewport && (ActivateViewport(m_preGameModeActiveViewport), true);
         m_preGameModeActiveViewport = nullptr;
     }

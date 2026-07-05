@@ -48,6 +48,7 @@ namespace Hammer
 
         void SetViewModes(const HammerViewModes& viewModes);
         HammerViewModes GetViewModes() const;
+        void SetGameModeSuppressed(bool suppressed);
 
         AZ::EntityId GetCameraEntityId() const;
 
@@ -80,6 +81,7 @@ namespace Hammer
         AZ::EntityId m_cameraEntityId;
         AzFramework::ViewportControllerPtr m_cameraController;
         HammerViewModes m_viewModes;
+        bool m_viewModesSuppressed = false;
         bool m_sceneInitialized = false;
         bool m_active = false;
         bool m_renderTickEnabled = true;
