@@ -4,6 +4,9 @@
 #include <QScopedPointer>
 #include <QWidget>
 #include <Atom/RPI.Public/ViewportContext.h>
+#include <AzCore/Component/EntityId.h>
+#include <AzFramework/Viewport/ViewportControllerInterface.h>
+#include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 #endif
 
 namespace AtomToolsFramework
@@ -25,6 +28,7 @@ namespace Hammer
 {
     class HammerWidget
         : public QWidget
+        , private AzToolsFramework::EditorEntityContextNotificationBus::Handler
     {
     Q_OBJECT
     public:
@@ -35,6 +39,8 @@ namespace Hammer
 
         void SetActive(bool active);
         void SetRenderTickEnabled(bool enabled);
+
+        AZ::EntityId GetCameraEntityId() const;
 
     Q_SIGNALS:
         void ViewportFocusRequested();
@@ -55,9 +61,14 @@ namespace Hammer
         void ApplyActiveState();
         void ApplyRenderTickState();
         void SyncAdoptedGeometry();
+        void SetupCamera();
+
+        void OnContextReset() override;
 
         AtomToolsFramework::RenderViewportWidget* m_viewportWidget = nullptr;
         QWidget* m_adoptedRealViewport = nullptr;
+        AZ::EntityId m_cameraEntityId;
+        AzFramework::ViewportControllerPtr m_cameraController;
         QScopedPointer<Ui::HammerWidgetClass> m_ui;
         bool m_sceneInitialized = false;
         bool m_active = false;

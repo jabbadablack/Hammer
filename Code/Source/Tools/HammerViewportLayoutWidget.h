@@ -5,6 +5,7 @@
 #include <QWidget>
 #endif
 
+#include <AzToolsFramework/API/EditorCameraBus.h>
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 
 #include <AzCore/std/containers/array.h>
@@ -27,6 +28,7 @@ namespace Hammer
     class HammerViewportLayoutWidget
         : public QWidget
         , private AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler
+        , private Camera::EditorCameraRequestBus::Handler
     {
         Q_OBJECT
     public:
@@ -57,6 +59,13 @@ namespace Hammer
 
         void OnStartGameModeRequest() override;
         void OnStopGameModeRequest() override;
+
+        void SetViewFromEntityPerspective(const AZ::EntityId& entityId) override;
+        AZ::EntityId GetCurrentViewEntityId() override;
+        bool GetActiveCameraPosition(AZ::Vector3& cameraPos) override;
+        AZStd::optional<AZ::Transform> GetActiveCameraTransform() override;
+        AZStd::optional<float> GetCameraFoV() override;
+        bool GetActiveCameraState(AzFramework::CameraState& cameraState) override;
 
         QGridLayout* m_gridLayout = nullptr;
         QWidget* m_gridContainer = nullptr;

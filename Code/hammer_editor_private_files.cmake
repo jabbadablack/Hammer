@@ -18,7 +18,7 @@ set(FILES
     Source/Tools/HammerQtEnvironment.cpp
     Source/Tools/HammerRenderViewportWidget.cpp
     Source/Tools/HammerRenderViewportWidget.h
-    Source/Tools/HammerViewportCameraFactory.cpp
-    Source/Tools/HammerViewportCameraFactory.h
+    Source/Tools/HammerViewportCameraComponent.cpp
+    Source/Tools/HammerViewportCameraComponent.h
     Source/Tools/Hammer.qrc
 )
