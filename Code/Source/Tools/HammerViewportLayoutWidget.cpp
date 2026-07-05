@@ -9,7 +9,10 @@
 
 #include <QEvent>
 #include <QGridLayout>
+#include <QMainWindow>
+#include <QMenu>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 namespace Hammer
@@ -94,6 +97,8 @@ namespace Hammer
              Camera::EditorCameraNotificationBus::Broadcast(
                  &Camera::EditorCameraNotificationBus::Events::OnViewportViewEntityChanged, viewport->GetCameraEntityId()),
              true);
+
+        SyncViewModeSwitcher();
     }
 
     void HammerViewportLayoutWidget::ReconcileGridSlots(int shownCount, int columns)
@@ -202,6 +207,74 @@ namespace Hammer
         m_overlaySyncTimer = new QTimer(this);
         connect(m_overlaySyncTimer, &QTimer::timeout, this, &HammerViewportLayoutWidget::SyncViewportUiOverlay);
         m_overlaySyncTimer->start(16);
+
+        m_viewportUiOverlayWindow && (BuildViewModeSwitcher(), true);
+    }
+
+    void HammerViewportLayoutWidget::BuildViewModeSwitcher()
+    {
+        AZ_Assert(m_viewportUiOverlayWindow, "BuildViewModeSwitcher called before the ViewportUi overlay window was found");
+        AZ_Assert(!m_viewModeButton, "BuildViewModeSwitcher called more than once");
+
+        auto* overlayWindow = qobject_cast<QMainWindow*>(m_viewportUiOverlayWindow);
+        QWidget* overlay = overlayWindow ? overlayWindow->centralWidget() : nullptr;
+        AZ_Error(
+            "HammerViewportLayoutWidget", overlay,
+            "Could not find the ViewportUi overlay's central widget; the view-mode switcher is unavailable");
+
+        overlay &&
+            ([this, overlay]
+             {
+                 m_viewModeButton = new QToolButton(overlay);
+                 m_viewModeButton->setText(QObject::tr("View Mode"));
+                 m_viewModeButton->setPopupMode(QToolButton::InstantPopup);
+                 m_viewModeButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+                 m_viewModeButton->setStyleSheet(QStringLiteral(
+                     "QToolButton { background-color: rgba(0, 0, 0, 153); border: 1px solid rgba(255, 255, 255, 38);"
+                     " border-radius: 4px; color: white; padding: 4px 10px; }"
+                     "QToolButton::menu-indicator { image: none; }"));
+
+                 QMenu* menu = new QMenu(m_viewModeButton);
+                 m_normalAction = menu->addAction(QObject::tr("Normal"));
+                 m_wireframeAction = menu->addAction(QObject::tr("Wireframe"));
+                 m_overdrawAction = menu->addAction(QObject::tr("Quad Overdraw"));
+                 for (QAction* action : { m_normalAction, m_wireframeAction, m_overdrawAction })
+                 {
+                     action->setCheckable(true);
+                     connect(action, &QAction::toggled, this, &HammerViewportLayoutWidget::ApplyViewModesFromSwitcher);
+                 }
+                 m_normalAction->setChecked(true);
+                 m_viewModeButton->setMenu(menu);
+
+                 auto* overlayGrid = qobject_cast<QGridLayout*>(overlay->layout());
+                 overlayGrid && (overlayGrid->addWidget(m_viewModeButton, 0, 1, Qt::AlignTop | Qt::AlignLeft), true);
+                 !overlayGrid && (m_viewModeButton->move(200, 4), true);
+                 m_viewModeButton->show();
+
+                 SyncViewModeSwitcher();
+             }(),
+             true);
+    }
+
+    void HammerViewportLayoutWidget::SyncViewModeSwitcher()
+    {
+        const bool canSync = m_viewModeButton && m_activeViewport;
+        canSync &&
+            (m_syncingViewModeSwitcher = true,
+             m_normalAction->setChecked(m_activeViewport->GetViewModes().m_normal),
+             m_wireframeAction->setChecked(m_activeViewport->GetViewModes().m_wireframe),
+             m_overdrawAction->setChecked(m_activeViewport->GetViewModes().m_overdraw),
+             m_syncingViewModeSwitcher = false, true);
+    }
+
+    void HammerViewportLayoutWidget::ApplyViewModesFromSwitcher()
+    {
+        AZ_Assert(m_viewModeButton, "ApplyViewModesFromSwitcher called before the switcher was built");
+
+        (!m_syncingViewModeSwitcher && m_activeViewport) &&
+            (m_activeViewport->SetViewModes(HammerViewModes{
+                 m_normalAction->isChecked(), m_wireframeAction->isChecked(), m_overdrawAction->isChecked() }),
+             true);
     }
 
     void HammerViewportLayoutWidget::SyncViewportUiOverlay()

@@ -1,6 +1,8 @@
 #include "HammerEditorSystemComponent.h"
+#include "HammerViewModeFeatureProcessor.h"
 #include "HammerViewportLayoutWidget.h"
 
+#include <Atom/RPI.Public/FeatureProcessorFactory.h>
 #include <AzCore/Interface/Interface.h>
 #include <AzCore/RTTI/BehaviorContext.h>
 #include <AzCore/Serialization/SerializeContext.h>
@@ -65,6 +67,8 @@ namespace Hammer
 
     void HammerEditorSystemComponent::Reflect(AZ::ReflectContext* context)
     {
+        HammerViewModeFeatureProcessor::Reflect(context);
+
         auto* serializeContext = azrtti_cast<AZ::SerializeContext*>(context);
         serializeContext &&
             (serializeContext->Class<HammerEditorSystemComponent, HammerSystemComponent>()->Version(0), true);
@@ -95,6 +99,11 @@ namespace Hammer
     void HammerEditorSystemComponent::Activate()
     {
         HammerSystemComponent::Activate();
+
+        auto* featureProcessorFactory = AZ::RPI::FeatureProcessorFactory::Get();
+        AZ_Assert(featureProcessorFactory, "HammerEditorSystemComponent activated before the FeatureProcessorFactory");
+        featureProcessorFactory->RegisterFeatureProcessor<HammerViewModeFeatureProcessor>();
+
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
         AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusConnect();
 
@@ -115,6 +124,10 @@ namespace Hammer
 
         AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusDisconnect();
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
+
+        auto* featureProcessorFactory = AZ::RPI::FeatureProcessorFactory::Get();
+        featureProcessorFactory && (featureProcessorFactory->UnregisterFeatureProcessor<HammerViewModeFeatureProcessor>(), true);
+
         HammerSystemComponent::Deactivate();
     }
 

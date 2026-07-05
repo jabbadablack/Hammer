@@ -144,6 +144,7 @@ if(PAL_TRAIT_BUILD_HOST_TOOLS)
                 Gem::Atom_RPI.Edit
                 Gem::Atom_RPI.Public
                 Gem::Atom_Feature_Common.Public
+                Gem::AtomLyIntegration_CommonFeatures.Public
                 Legacy::EditorLib
                 Legacy::Editor.Headers
     )

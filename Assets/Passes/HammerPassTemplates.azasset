@@ -1,0 +1,21 @@
+{
+    "Type": "JsonSerialization",
+    "Version": 1,
+    "ClassName": "AssetAliasesSourceData",
+    "ClassData": {
+        "AssetPaths": [
+            {
+                "Name": "HammerWireframePassTemplate",
+                "Path": "Passes/HammerWireframe.pass"
+            },
+            {
+                "Name": "HammerOverdrawCountPassTemplate",
+                "Path": "Passes/HammerOverdrawCount.pass"
+            },
+            {
+                "Name": "HammerOverdrawResolvePassTemplate",
+                "Path": "Passes/HammerOverdrawResolve.pass"
+            }
+        ]
+    }
+}

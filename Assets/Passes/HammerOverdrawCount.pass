@@ -1,0 +1,102 @@
+{
+    "Type": "JsonSerialization",
+    "Version": 1,
+    "ClassName": "PassAsset",
+    "ClassData": {
+        "PassTemplate": {
+            "Name": "HammerOverdrawCountPassTemplate",
+            "PassClass": "RasterPass",
+            "Slots": [
+                {
+                    "Name": "DepthInputOutput",
+                    "SlotType": "InputOutput",
+                    "ScopeAttachmentUsage": "DepthStencil"
+                },
+                {
+                    "Name": "Lock",
+                    "SlotType": "Output",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "m_lock",
+                    "LoadStoreAction": {
+                        "LoadAction": "Clear"
+                    }
+                },
+                {
+                    "Name": "Count",
+                    "SlotType": "Output",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "m_count",
+                    "LoadStoreAction": {
+                        "LoadAction": "Clear"
+                    }
+                }
+            ],
+            "ImageAttachments": [
+                {
+                    "Name": "LockImage",
+                    "SizeSource": {
+                        "Source": {
+                            "Pass": "This",
+                            "Attachment": "DepthInputOutput"
+                        },
+                        "Multipliers": {
+                            "WidthMultiplier": 0.5,
+                            "HeightMultiplier": 0.5
+                        }
+                    },
+                    "ImageDescriptor": {
+                        "Format": "R32_UINT",
+                        "BindFlags": [
+                            "ShaderReadWrite"
+                        ],
+                        "SharedQueueMask": "Graphics"
+                    }
+                },
+                {
+                    "Name": "CountImage",
+                    "SizeSource": {
+                        "Source": {
+                            "Pass": "This",
+                            "Attachment": "DepthInputOutput"
+                        },
+                        "Multipliers": {
+                            "WidthMultiplier": 0.5,
+                            "HeightMultiplier": 0.5
+                        }
+                    },
+                    "ImageDescriptor": {
+                        "Format": "R32_UINT",
+                        "BindFlags": [
+                            "ShaderReadWrite"
+                        ],
+                        "SharedQueueMask": "Graphics"
+                    }
+                }
+            ],
+            "Connections": [
+                {
+                    "LocalSlot": "Lock",
+                    "AttachmentRef": {
+                        "Pass": "This",
+                        "Attachment": "LockImage"
+                    }
+                },
+                {
+                    "LocalSlot": "Count",
+                    "AttachmentRef": {
+                        "Pass": "This",
+                        "Attachment": "CountImage"
+                    }
+                }
+            ],
+            "PassData": {
+                "$type": "RasterPassData",
+                "DrawListTag": "hammeroverdraw",
+                "BindViewSrg": true,
+                "PassSrgShaderAsset": {
+                    "FilePath": "Shaders/ViewMode/HammerOverdrawCount.shader"
+                }
+            }
+        }
+    }
+}

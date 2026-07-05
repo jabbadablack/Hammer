@@ -110,6 +110,30 @@ namespace Hammer
             pipeline && (RenderTickActions[static_cast<size_t>(enabled)](*pipeline), true);
         }
 
+        void SetNamedPassEnabled(AZ::RPI::RenderPipeline& pipeline, const char* passName, bool enabled)
+        {
+            AZ::RPI::Ptr<AZ::RPI::Pass> pass = pipeline.FindFirstPass(AZ::Name(passName));
+            pass && (pass->SetEnabled(enabled), true);
+        }
+
+        void SetViewModePassesEnabled(AZ::RPI::ViewportContextPtr viewportContext, const HammerViewModes& viewModes)
+        {
+            AZ::RPI::RenderPipelinePtr pipeline;
+            viewportContext && (pipeline = viewportContext->GetCurrentPipeline(), true);
+
+            AZ_Error(
+                "HammerWidget", !pipeline || pipeline->FindFirstPass(AZ::Name("HammerWireframePass")),
+                "Pipeline '%s' is missing the Hammer view-mode passes", pipeline ? pipeline->GetId().GetCStr() : "");
+
+            pipeline &&
+                (SetNamedPassEnabled(*pipeline, "OpaquePass", viewModes.m_normal),
+                 SetNamedPassEnabled(*pipeline, "Forward", viewModes.m_normal),
+                 SetNamedPassEnabled(*pipeline, "TransparentPass", viewModes.m_normal),
+                 SetNamedPassEnabled(*pipeline, "HammerWireframePass", viewModes.m_wireframe),
+                 SetNamedPassEnabled(*pipeline, "HammerOverdrawCountPass", viewModes.m_overdraw),
+                 SetNamedPassEnabled(*pipeline, "HammerOverdrawResolvePass", viewModes.m_overdraw), true);
+        }
+
         class HammerCameraViewportContext final
             : public AtomToolsFramework::ModularCameraViewportContext
         {
@@ -344,6 +368,24 @@ namespace Hammer
         (m_sceneInitialized && m_viewportWidget) && (ApplyRenderTickState(), true);
     }
 
+    void HammerWidget::SetViewModes(const HammerViewModes& viewModes)
+    {
+        m_viewModes = viewModes;
+        (m_sceneInitialized && m_viewportWidget) && (ApplyViewModes(), true);
+    }
+
+    HammerViewModes HammerWidget::GetViewModes() const
+    {
+        return m_viewModes;
+    }
+
+    void HammerWidget::ApplyViewModes()
+    {
+        AZ_Assert(m_viewportWidget, "ApplyViewModes called without an initialized viewport widget");
+        AZ_Assert(m_sceneInitialized, "ApplyViewModes called before the scene was initialized");
+        SetViewModePassesEnabled(m_viewportWidget->GetViewportContext(), m_viewModes);
+    }
+
     void HammerWidget::ApplyActiveState()
     {
         AZ_Assert(m_viewportWidget, "ApplyActiveState called without an initialized viewport widget");
@@ -362,6 +404,7 @@ namespace Hammer
                  [this, viewportContext](AZ::RPI::RenderPipelinePtr)
                  {
                      SetOverlayPassEnabled(viewportContext, m_active);
+                     SetViewModePassesEnabled(viewportContext, m_viewModes);
                  }),
              viewportContext->ConnectCurrentPipelineChangedHandler(m_pipelineChangedHandler),
              true);
@@ -399,6 +442,7 @@ namespace Hammer
 
         ApplyActiveState();
         ApplyRenderTickState();
+        ApplyViewModes();
     }
 
     void HammerWidget::SetupCamera()
