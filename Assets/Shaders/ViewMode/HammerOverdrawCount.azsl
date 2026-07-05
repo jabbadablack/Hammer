@@ -2,17 +2,11 @@
 
 ShaderResourceGroup PassSrg : SRG_PerPass
 {
-    RWTexture2D<uint> m_lock;
-    RWTexture2D<uint> m_count;
+    RWTexture2D<uint> m_mask;
 }
 
 [earlydepthstencil]
 void MainPS(VsOutput IN, uint primitiveId : SV_PrimitiveID)
 {
-    const uint2 quad = uint2(IN.m_position.xy) >> 1;
-    const uint lockId = primitiveId + 1;
-    uint previousId = 0;
-    InterlockedExchange(PassSrg::m_lock[quad], lockId, previousId);
-    uint previousCount = 0;
-    InterlockedAdd(PassSrg::m_count[quad], uint(previousId != lockId), previousCount);
+    InterlockedOr(PassSrg::m_mask[uint2(IN.m_position.xy)], 1u << (primitiveId & 31u));
 }
