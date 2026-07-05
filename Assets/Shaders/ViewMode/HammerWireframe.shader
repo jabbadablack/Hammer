@@ -2,16 +2,13 @@
     "Source": "HammerWireframe.azsl",
     "DepthStencilState": {
         "Depth": {
-            "Enable": true,
-            "WriteMask": "Zero",
-            "CompareFunc": "GreaterEqual"
+            "Enable": false,
+            "WriteMask": "Zero"
         }
     },
     "RasterState": {
         "FillMode": "Wireframe",
-        "CullMode": "None",
-        "DepthBias": 100,
-        "DepthBiasSlopeScale": 2.0
+        "CullMode": "None"
     },
     "GlobalTargetBlendState": {
         "Enable": true,

@@ -11,7 +11,7 @@
                     "Name": "Count",
                     "SlotType": "Input",
                     "ScopeAttachmentUsage": "Shader",
-                    "ShaderInputName": "m_count"
+                    "ShaderInputName": "m_mask"
                 },
                 {
                     "Name": "ColorInputOutput",

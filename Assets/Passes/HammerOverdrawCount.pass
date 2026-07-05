@@ -13,19 +13,10 @@
                     "ScopeAttachmentUsage": "DepthStencil"
                 },
                 {
-                    "Name": "Lock",
-                    "SlotType": "Output",
-                    "ScopeAttachmentUsage": "Shader",
-                    "ShaderInputName": "m_lock",
-                    "LoadStoreAction": {
-                        "LoadAction": "Clear"
-                    }
-                },
-                {
                     "Name": "Count",
                     "SlotType": "Output",
                     "ScopeAttachmentUsage": "Shader",
-                    "ShaderInputName": "m_count",
+                    "ShaderInputName": "m_mask",
                     "LoadStoreAction": {
                         "LoadAction": "Clear"
                     }
@@ -33,35 +24,11 @@
             ],
             "ImageAttachments": [
                 {
-                    "Name": "LockImage",
-                    "SizeSource": {
-                        "Source": {
-                            "Pass": "This",
-                            "Attachment": "DepthInputOutput"
-                        },
-                        "Multipliers": {
-                            "WidthMultiplier": 0.5,
-                            "HeightMultiplier": 0.5
-                        }
-                    },
-                    "ImageDescriptor": {
-                        "Format": "R32_UINT",
-                        "BindFlags": [
-                            "ShaderReadWrite"
-                        ],
-                        "SharedQueueMask": "Graphics"
-                    }
-                },
-                {
                     "Name": "CountImage",
                     "SizeSource": {
                         "Source": {
                             "Pass": "This",
                             "Attachment": "DepthInputOutput"
-                        },
-                        "Multipliers": {
-                            "WidthMultiplier": 0.5,
-                            "HeightMultiplier": 0.5
                         }
                     },
                     "ImageDescriptor": {
@@ -74,13 +41,6 @@
                 }
             ],
             "Connections": [
-                {
-                    "LocalSlot": "Lock",
-                    "AttachmentRef": {
-                        "Pass": "This",
-                        "Attachment": "LockImage"
-                    }
-                },
                 {
                     "LocalSlot": "Count",
                     "AttachmentRef": {

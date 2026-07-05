@@ -4,13 +4,15 @@
 
 ShaderResourceGroup PassSrg : SRG_PerPass
 {
-    Texture2D<uint> m_count;
+    Texture2D<uint> m_mask;
 }
 
 PSOutput MainPS(VSOutput IN)
 {
-    const uint2 quad = uint2(IN.m_position.xy) >> 1;
-    const uint count = PassSrg::m_count[quad];
+    const uint2 pixel = uint2(IN.m_position.xy);
+    const uint mask = PassSrg::m_mask[pixel] | PassSrg::m_mask[pixel + uint2(1, 0)] |
+        PassSrg::m_mask[pixel + uint2(0, 1)] | PassSrg::m_mask[pixel + uint2(1, 1)];
+    const uint count = countbits(mask);
 
     static const float3 Ramp[6] = {
         float3(0.0, 0.0, 0.0),
@@ -22,7 +24,7 @@ PSOutput MainPS(VSOutput IN)
     };
 
     const uint rampIndex = min(count, 5u);
-    const float alpha = 0.65 * saturate(float(count));
+    const float alpha = saturate(float(count));
 
     PSOutput OUT;
     OUT.m_color = float4(Ramp[rampIndex], alpha);

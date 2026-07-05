@@ -294,7 +294,7 @@ namespace Hammer
             const float green = AZ::GetClamp(2.0f - fabsf(hue * 6.0f - 2.0f), 0.0f, 1.0f);
             const float blue = AZ::GetClamp(2.0f - fabsf(hue * 6.0f - 4.0f), 0.0f, 1.0f);
             const AZ::Vector4 wireColor(
-                red * 0.75f + 0.25f, green * 0.75f + 0.25f, blue * 0.75f + 0.25f, 0.5f);
+                red * 0.75f + 0.25f, green * 0.75f + 0.25f, blue * 0.75f + 0.25f, 0.85f);
             mesh.m_objectSrg && (mesh.m_objectSrg->SetConstant(mesh.m_colorIndex, wireColor), true);
 
             const auto lods = model->GetLods();
