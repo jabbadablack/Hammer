@@ -12,11 +12,15 @@
 #include <Atom/RPI.Public/View.h>
 #include <Atom/RPI.Reflect/Asset/AssetUtils.h>
 #include <Atom/RPI.Reflect/Pass/PassRequest.h>
+#include <Atom/Feature/Mesh/MeshFeatureProcessorInterface.h>
 #include <AtomLyIntegration/CommonFeatures/Mesh/MeshComponentBus.h>
+#include <AtomLyIntegration/CommonFeatures/Mesh/MeshHandleStateBus.h>
 #include <AzCore/Asset/AssetManager.h>
 #include <AzCore/Component/ComponentApplicationBus.h>
 #include <AzCore/Component/TransformBus.h>
+#include <AzCore/Math/MathUtils.h>
 #include <AzCore/Math/Matrix4x4.h>
+#include <AzCore/Math/Vector4.h>
 #include <AzCore/Serialization/SerializeContext.h>
 
 namespace Hammer
@@ -122,16 +126,27 @@ namespace Hammer
         auto* passSystem = AZ::RPI::PassSystemInterface::Get();
         AZ_Assert(passSystem, "InjectPasses called without a pass system");
 
+        AZ::RPI::PassRequest backgroundRequest;
+        backgroundRequest.m_passName = AZ::Name("HammerViewModeBackgroundPass");
+        backgroundRequest.m_templateName = AZ::Name("HammerViewModeBackgroundPassTemplate");
+        backgroundRequest.m_passEnabled = false;
+        backgroundRequest.AddInputConnection(AZ::RPI::PassConnection{
+            AZ::Name("ColorInputOutput"), AZ::RPI::PassAttachmentRef{ AZ::Name("AuxGeomPass"), AZ::Name("ColorInputOutput") } });
+        AZ::RPI::Ptr<AZ::RPI::Pass> backgroundPass = passSystem->CreatePassFromRequest(&backgroundRequest);
+        backgroundPass && (renderPipeline.AddPassAfter(backgroundPass, AZ::Name("AuxGeomPass")), true);
+
         AZ::RPI::PassRequest wireframeRequest;
         wireframeRequest.m_passName = AZ::Name("HammerWireframePass");
         wireframeRequest.m_templateName = AZ::Name("HammerWireframePassTemplate");
         wireframeRequest.m_passEnabled = false;
         wireframeRequest.AddInputConnection(AZ::RPI::PassConnection{
-            AZ::Name("ColorInputOutput"), AZ::RPI::PassAttachmentRef{ AZ::Name("AuxGeomPass"), AZ::Name("ColorInputOutput") } });
+            AZ::Name("ColorInputOutput"),
+            AZ::RPI::PassAttachmentRef{ AZ::Name("HammerViewModeBackgroundPass"), AZ::Name("ColorInputOutput") } });
         wireframeRequest.AddInputConnection(AZ::RPI::PassConnection{
             AZ::Name("DepthInputOutput"), AZ::RPI::PassAttachmentRef{ AZ::Name("DepthPrePass"), AZ::Name("Depth") } });
-        AZ::RPI::Ptr<AZ::RPI::Pass> wireframePass = passSystem->CreatePassFromRequest(&wireframeRequest);
-        wireframePass && (renderPipeline.AddPassAfter(wireframePass, AZ::Name("AuxGeomPass")), true);
+        AZ::RPI::Ptr<AZ::RPI::Pass> wireframePass;
+        backgroundPass && (wireframePass = passSystem->CreatePassFromRequest(&wireframeRequest), true);
+        wireframePass && (renderPipeline.AddPassAfter(wireframePass, AZ::Name("HammerViewModeBackgroundPass")), true);
 
         AZ::RPI::PassRequest countRequest;
         countRequest.m_passName = AZ::Name("HammerOverdrawCountPass");
@@ -157,11 +172,11 @@ namespace Hammer
         resolvePass && (renderPipeline.AddPassAfter(resolvePass, AZ::Name("HammerOverdrawCountPass")), true);
 
         AZ_Error(
-            LogWindow, wireframePass && countPass && resolvePass,
+            LogWindow, backgroundPass && wireframePass && countPass && resolvePass,
             "Could not create the Hammer view-mode passes for pipeline '%s'", renderPipeline.GetId().GetCStr());
 
-        (wireframePass && countPass && resolvePass) &&
-            (m_pipelinePasses[&renderPipeline] = PipelinePasses{ wireframePass, countPass, resolvePass }, true);
+        (backgroundPass && wireframePass && countPass && resolvePass) &&
+            (m_pipelinePasses[&renderPipeline] = PipelinePasses{ backgroundPass, wireframePass, countPass, resolvePass }, true);
     }
 
     void HammerViewModeFeatureProcessor::RefreshPipelinePasses(AZ::RPI::RenderPipeline& renderPipeline)
@@ -169,6 +184,8 @@ namespace Hammer
         m_pipelinePasses.erase(&renderPipeline);
 
         auto* passSystem = AZ::RPI::PassSystemInterface::Get();
+        auto backgroundFilter =
+            AZ::RPI::PassFilter::CreateWithTemplateName(AZ::Name("HammerViewModeBackgroundPassTemplate"), &renderPipeline);
         auto wireframeFilter =
             AZ::RPI::PassFilter::CreateWithTemplateName(AZ::Name("HammerWireframePassTemplate"), &renderPipeline);
         auto countFilter =
@@ -176,12 +193,13 @@ namespace Hammer
         auto resolveFilter =
             AZ::RPI::PassFilter::CreateWithTemplateName(AZ::Name("HammerOverdrawResolvePassTemplate"), &renderPipeline);
 
+        AZ::RPI::Ptr<AZ::RPI::Pass> backgroundPass = passSystem->FindFirstPass(backgroundFilter);
         AZ::RPI::Ptr<AZ::RPI::Pass> wireframePass = passSystem->FindFirstPass(wireframeFilter);
         AZ::RPI::Ptr<AZ::RPI::Pass> countPass = passSystem->FindFirstPass(countFilter);
         AZ::RPI::Ptr<AZ::RPI::Pass> resolvePass = passSystem->FindFirstPass(resolveFilter);
 
-        (wireframePass && countPass && resolvePass) &&
-            (m_pipelinePasses[&renderPipeline] = PipelinePasses{ wireframePass, countPass, resolvePass }, true);
+        (backgroundPass && wireframePass && countPass && resolvePass) &&
+            (m_pipelinePasses[&renderPipeline] = PipelinePasses{ backgroundPass, wireframePass, countPass, resolvePass }, true);
     }
 
     void HammerViewModeFeatureProcessor::OnRenderPipelineChanged(
@@ -214,14 +232,25 @@ namespace Hammer
 
     void HammerViewModeFeatureProcessor::RefreshTrackedMeshes()
     {
+        auto* meshFeatureProcessor = GetParentScene()->GetFeatureProcessor<AZ::Render::MeshFeatureProcessorInterface>();
+
         AZStd::vector<AZStd::pair<AZ::EntityId, AZ::Data::Instance<AZ::RPI::Model>>> current;
         AZ::ComponentApplicationBus::Broadcast(
             &AZ::ComponentApplicationRequests::EnumerateEntities,
-            [&current](AZ::Entity* entity)
+            [&current, meshFeatureProcessor](AZ::Entity* entity)
             {
                 AZ::Data::Instance<AZ::RPI::Model> model;
                 AZ::Render::MeshComponentRequestBus::EventResult(
                     model, entity->GetId(), &AZ::Render::MeshComponentRequests::GetModel);
+
+                const AZ::Render::MeshFeatureProcessorInterface::MeshHandle* meshHandle = nullptr;
+                (!model && meshFeatureProcessor) &&
+                    (AZ::Render::MeshHandleStateRequestBus::EventResult(
+                         meshHandle, entity->GetId(), &AZ::Render::MeshHandleStateRequests::GetMeshHandle),
+                     true);
+                (!model && meshHandle && meshHandle->IsValid()) &&
+                    (model = meshFeatureProcessor->GetModel(*meshHandle), true);
+
                 model && (current.emplace_back(entity->GetId(), model), true);
             });
 
@@ -258,6 +287,15 @@ namespace Hammer
             mesh.m_model = model;
             mesh.m_objectSrg = AZ::RPI::ShaderResourceGroup::Create(m_srgShaderAsset, AZ::Name("HammerObjectSrg"));
             AZ_Error(LogWindow, mesh.m_objectSrg, "Failed to create a HammerObjectSrg for entity %s", entityId.ToString().c_str());
+
+            const AZ::u64 entityHash = AZStd::hash<AZ::u64>{}(static_cast<AZ::u64>(entityId));
+            const float hue = static_cast<float>(entityHash % 3600u) / 3600.0f;
+            const float red = AZ::GetClamp(fabsf(hue * 6.0f - 3.0f) - 1.0f, 0.0f, 1.0f);
+            const float green = AZ::GetClamp(2.0f - fabsf(hue * 6.0f - 2.0f), 0.0f, 1.0f);
+            const float blue = AZ::GetClamp(2.0f - fabsf(hue * 6.0f - 4.0f), 0.0f, 1.0f);
+            const AZ::Vector4 wireColor(
+                red * 0.75f + 0.25f, green * 0.75f + 0.25f, blue * 0.75f + 0.25f, 0.5f);
+            mesh.m_objectSrg && (mesh.m_objectSrg->SetConstant(mesh.m_colorIndex, wireColor), true);
 
             const auto lods = model->GetLods();
             const size_t meshCount = (mesh.m_objectSrg && !lods.empty()) ? lods[0]->GetMeshes().size() : 0;

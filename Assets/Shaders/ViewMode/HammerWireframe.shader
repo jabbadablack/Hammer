@@ -10,8 +10,14 @@
     "RasterState": {
         "FillMode": "Wireframe",
         "CullMode": "None",
-        "DepthBias": -10,
-        "DepthBiasSlopeScale": -1.0
+        "DepthBias": 100,
+        "DepthBiasSlopeScale": 2.0
+    },
+    "GlobalTargetBlendState": {
+        "Enable": true,
+        "BlendSource": "AlphaSource",
+        "BlendDest": "AlphaSourceInverse",
+        "BlendOp": "Add"
     },
     "DrawList": "hammerwireframe",
     "ProgramSettings": {

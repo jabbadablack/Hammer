@@ -38,12 +38,14 @@ namespace Hammer
             AZ::Data::Instance<AZ::RPI::Model> m_model;
             AZ::Data::Instance<AZ::RPI::ShaderResourceGroup> m_objectSrg;
             AZ::RHI::ShaderInputNameIndex m_worldIndex = "m_world";
+            AZ::RHI::ShaderInputNameIndex m_colorIndex = "m_color";
             AZ::Transform m_transform = AZ::Transform::CreateUniformScale(0.0f);
             AZStd::vector<AZ::RPI::MeshDrawPacket> m_drawPackets;
         };
 
         struct PipelinePasses
         {
+            AZ::RPI::Ptr<AZ::RPI::Pass> m_background;
             AZ::RPI::Ptr<AZ::RPI::Pass> m_wireframe;
             AZ::RPI::Ptr<AZ::RPI::Pass> m_count;
             AZ::RPI::Ptr<AZ::RPI::Pass> m_resolve;

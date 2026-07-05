@@ -5,6 +5,10 @@
     "ClassData": {
         "AssetPaths": [
             {
+                "Name": "HammerViewModeBackgroundPassTemplate",
+                "Path": "Passes/HammerViewModeBackground.pass"
+            },
+            {
                 "Name": "HammerWireframePassTemplate",
                 "Path": "Passes/HammerWireframe.pass"
             },

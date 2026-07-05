@@ -1,18 +1,11 @@
 {
-    "Source": "HammerOverdrawCount.azsl",
+    "Source": "HammerViewModeBackground.azsl",
     "DepthStencilState": {
         "Depth": {
-            "Enable": true,
-            "WriteMask": "Zero",
-            "CompareFunc": "GreaterEqual"
+            "Enable": false
         }
     },
-    "RasterState": {
-        "CullMode": "Back",
-        "DepthBias": 100,
-        "DepthBiasSlopeScale": 2.0
-    },
-    "DrawList": "hammeroverdraw",
+    "DrawList": "hammerviewmodebackground",
     "ProgramSettings": {
         "EntryPoints": [
             {

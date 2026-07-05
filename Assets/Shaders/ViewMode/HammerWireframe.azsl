@@ -8,6 +8,6 @@ struct PsOutput
 PsOutput MainPS(VsOutput IN)
 {
     PsOutput OUT;
-    OUT.m_color = float4(0.8, 0.9, 1.0, 1.0);
+    OUT.m_color = HammerObjectSrg::m_color;
     return OUT;
 }

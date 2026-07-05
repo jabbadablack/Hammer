@@ -125,10 +125,12 @@ namespace Hammer
                 "HammerWidget", !pipeline || pipeline->FindFirstPass(AZ::Name("HammerWireframePass")),
                 "Pipeline '%s' is missing the Hammer view-mode passes", pipeline ? pipeline->GetId().GetCStr() : "");
 
+            const bool flatBackground = !viewModes.m_normal && (viewModes.m_wireframe || viewModes.m_overdraw);
             pipeline &&
                 (SetNamedPassEnabled(*pipeline, "OpaquePass", viewModes.m_normal),
                  SetNamedPassEnabled(*pipeline, "Forward", viewModes.m_normal),
                  SetNamedPassEnabled(*pipeline, "TransparentPass", viewModes.m_normal),
+                 SetNamedPassEnabled(*pipeline, "HammerViewModeBackgroundPass", flatBackground),
                  SetNamedPassEnabled(*pipeline, "HammerWireframePass", viewModes.m_wireframe),
                  SetNamedPassEnabled(*pipeline, "HammerOverdrawCountPass", viewModes.m_overdraw),
                  SetNamedPassEnabled(*pipeline, "HammerOverdrawResolvePass", viewModes.m_overdraw), true);
