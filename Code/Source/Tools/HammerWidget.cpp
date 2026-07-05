@@ -1,49 +1,67 @@
 #include "HammerWidget.h"
-#include "HammerQtEnvironment.h"
-#include "HammerRenderViewportWidget.h"
-#include "HammerViewportCameraComponent.h"
 #include "HammerViewportDisplayController.h"
 
-#include <AzCore/Interface/Interface.h>
-#include <Hammer/HammerEditorViewportBus.h>
-
 #include <QEvent>
+#include <QVBoxLayout>
 
 #include <Atom/RHI/RHISystemInterface.h>
 #include <Atom/RPI.Public/Pass/Pass.h>
 #include <Atom/RPI.Public/RenderPipeline.h>
-#include <Atom/RPI.Public/ViewportContext.h>
 #include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AtomToolsFramework/Viewport/ModularViewportCameraController.h>
-#include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 #include <AzCore/Component/TransformBus.h>
+#include <AzCore/Interface/Interface.h>
 #include <AzCore/Name/Name.h>
+#include <AzCore/std/algorithm.h>
 #include <AzCore/std/containers/array.h>
 #include <AzCore/std/string/string.h>
+#include <AzFramework/Components/CameraBus.h>
 #include <AzFramework/Scene/Scene.h>
 #include <AzFramework/Scene/SceneSystemInterface.h>
 #include <AzFramework/Viewport/CameraInput.h>
 #include <AzFramework/Viewport/ViewportControllerList.h>
 #include <AzToolsFramework/API/EditorEntityAPI.h>
+#include <AzToolsFramework/API/EntityCompositionRequestBus.h>
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
-#include <AzToolsFramework/Entity/EditorEntityHelpers.h>
 #include <AzToolsFramework/Entity/PrefabEditorEntityOwnershipInterface.h>
-#include <AzToolsFramework/ToolsComponents/TransformComponent.h>
 #include <AzToolsFramework/Viewport/ViewportMessages.h>
 #include <Editor/EditorViewportSettings.h>
 #include <Editor/ViewportManipulatorController.h>
-
-#include <Tools/ui_HammerWidget.h>
-
-namespace Hammer::Platform
-{
-    void SyncAdoptedViewportGeometry(QWidget& adoptedRealViewport, const QRect& targetGeometry);
-} // namespace Hammer::Platform
+#include <Hammer/HammerEditorViewportBus.h>
 
 namespace Hammer
 {
+    namespace ViewInt = AzToolsFramework::ViewportInteraction;
+
+    AzFramework::WindowSize HammerRenderViewportWidget::GetClientAreaSize() const
+    {
+        AzFramework::WindowSize size = RenderViewportWidget::GetClientAreaSize();
+        return { AZStd::max(size.m_width, 32u), AZStd::max(size.m_height, 32u) };
+    }
+
+    AzFramework::WindowSize HammerRenderViewportWidget::GetRenderResolution() const
+    {
+        AzFramework::WindowSize size = RenderViewportWidget::GetRenderResolution();
+        return { AZStd::max(size.m_width, 32u), AZStd::max(size.m_height, 32u) };
+    }
+
     namespace
     {
+        AtomToolsFramework::RenderViewportWidget* FindRealRenderViewport(QWidget& root)
+        {
+            const QList<QWidget*> children = root.findChildren<QWidget*>();
+            const auto it = AZStd::find_if(
+                children.begin(), children.end(),
+                [](QWidget* child)
+                {
+                    return dynamic_cast<AtomToolsFramework::RenderViewportWidget*>(child) != nullptr;
+                });
+            auto* renderViewport =
+                it != children.end() ? dynamic_cast<AtomToolsFramework::RenderViewportWidget*>(*it) : nullptr;
+            renderViewport && (renderViewport->SetInputProcessingEnabled(false), true);
+            return renderViewport;
+        }
+
         void SetOverlayPassEnabled(AZ::RPI::ViewportContextPtr viewportContext, bool enabled)
         {
             AZ::RPI::RenderPipelinePtr pipeline;
@@ -59,19 +77,16 @@ namespace Hammer
             twoDPass && (twoDPass->SetEnabled(enabled), true);
         }
 
-        void SyncViewportContextName(
-            AZ::RPI::ViewportContextPtr viewportContext, AzFramework::ViewportId viewportId, bool active, bool isAdoptedViewport)
+        void SyncViewportContextName(AZ::RPI::ViewportContextPtr viewportContext, bool active, bool isAdoptedViewport)
         {
             AZ_Assert(viewportContext, "SyncViewportContextName called with a null ViewportContext");
-            AZ_Assert(viewportId != AzFramework::InvalidViewportId, "SyncViewportContextName called with an invalid ViewportId");
 
             auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
             AZ_Error("HammerWidget", viewportContextManager, "Could not find AZ::RPI::ViewportContextRequestsInterface");
 
             const AZ::Name defaultName = viewportContextManager->GetDefaultViewportContextName();
-            const AZ::Name currentName = viewportContext->GetName();
 
-            (isAdoptedViewport && active && currentName != defaultName) &&
+            (isAdoptedViewport && active && viewportContext->GetName() != defaultName) &&
                 (viewportContextManager->RenameViewportContext(viewportContext, defaultName), true);
         }
 
@@ -95,7 +110,7 @@ namespace Hammer
             pipeline && (RenderTickActions[static_cast<size_t>(enabled)](*pipeline), true);
         }
 
-        class HammerCameraViewportContext
+        class HammerCameraViewportContext final
             : public AtomToolsFramework::ModularCameraViewportContext
         {
         public:
@@ -149,38 +164,33 @@ namespace Hammer
             translateIds.m_boostChannelId = SandboxEditor::CameraTranslateBoostChannelId();
 
             auto rotateCamera = AZStd::make_shared<AzFramework::RotateCameraInput>(SandboxEditor::CameraFreeLookChannelId());
-            AZ_Assert(rotateCamera, "Failed to allocate RotateCameraInput");
             rotateCamera->m_rotateSpeedFn = &SandboxEditor::CameraRotateSpeed;
-
-            const auto hideCursor = [viewportId]
-            {
-                SandboxEditor::CameraCaptureCursorForLook() &&
-                    (AzToolsFramework::ViewportInteraction::ViewportMouseCursorRequestBus::Event(
-                         viewportId, &AzToolsFramework::ViewportInteraction::ViewportMouseCursorRequestBus::Events::BeginCursorCapture),
-                     true);
-            };
-            const auto showCursor = [viewportId]
-            {
-                SandboxEditor::CameraCaptureCursorForLook() &&
-                    (AzToolsFramework::ViewportInteraction::ViewportMouseCursorRequestBus::Event(
-                         viewportId, &AzToolsFramework::ViewportInteraction::ViewportMouseCursorRequestBus::Events::EndCursorCapture),
-                     true);
-            };
-            rotateCamera->SetActivationBeganFn(hideCursor);
-            rotateCamera->SetActivationEndedFn(showCursor);
+            rotateCamera->SetActivationBeganFn(
+                [viewportId]
+                {
+                    SandboxEditor::CameraCaptureCursorForLook() &&
+                        (ViewInt::ViewportMouseCursorRequestBus::Event(
+                             viewportId, &ViewInt::ViewportMouseCursorRequestBus::Events::BeginCursorCapture),
+                         true);
+                });
+            rotateCamera->SetActivationEndedFn(
+                [viewportId]
+                {
+                    SandboxEditor::CameraCaptureCursorForLook() &&
+                        (ViewInt::ViewportMouseCursorRequestBus::Event(
+                             viewportId, &ViewInt::ViewportMouseCursorRequestBus::Events::EndCursorCapture),
+                         true);
+                });
 
             auto translateCamera = AZStd::make_shared<AzFramework::TranslateCameraInput>(
                 translateIds, AzFramework::LookTranslation, AzFramework::TranslatePivotLook);
-            AZ_Assert(translateCamera, "Failed to allocate TranslateCameraInput");
             translateCamera->m_translateSpeedFn = &SandboxEditor::CameraTranslateSpeedScaled;
             translateCamera->m_boostMultiplierFn = &SandboxEditor::CameraBoostMultiplier;
 
             auto scrollCamera = AZStd::make_shared<AzFramework::LookScrollTranslationCameraInput>();
-            AZ_Assert(scrollCamera, "Failed to allocate LookScrollTranslationCameraInput");
             scrollCamera->m_scrollSpeedFn = &SandboxEditor::CameraScrollSpeedScaled;
 
             auto orbitCamera = AZStd::make_shared<AzFramework::OrbitCameraInput>(SandboxEditor::CameraOrbitChannelId());
-            AZ_Assert(orbitCamera, "Failed to allocate OrbitCameraInput");
             orbitCamera->SetPivotFn(
                 [](const AZ::Vector3& position, const AZ::Vector3& direction)
                 {
@@ -203,8 +213,6 @@ namespace Hammer
             orbitCamera->m_orbitCameras.AddCamera(orbitScrollDollyCamera);
 
             auto controller = AZStd::make_shared<AtomToolsFramework::ModularViewportCameraController>();
-            AZ_Assert(controller, "BuildViewportCameraController failed to allocate a ModularViewportCameraController");
-
             controller->SetCameraViewportContextBuilderCallback(
                 [viewportId, cameraEntityId](AZStd::unique_ptr<AtomToolsFramework::ModularCameraViewportContext>& cameraViewportContext)
                 {
@@ -238,19 +246,41 @@ namespace Hammer
 
     HammerWidget::HammerWidget(QWidget* parent)
         : QWidget(parent)
-        , m_ui(new Ui::HammerWidgetClass())
     {
-        m_ui->setupUi(this);
         setMinimumSize(32, 32);
 
+        auto* layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(0);
+
         m_viewportWidget = new HammerRenderViewportWidget(this, false);
-        AZ_Assert(m_viewportWidget, "Failed to allocate the Hammer render viewport widget");
         m_viewportWidget->setMinimumSize(32, 32);
         m_viewportWidget->installEventFilter(this);
-
-        m_ui->mainLayout->addWidget(m_viewportWidget);
+        layout->addWidget(m_viewportWidget);
 
         AzToolsFramework::EditorEntityContextNotificationBus::Handler::BusConnect();
+    }
+
+    HammerWidget::HammerWidget(QWidget* parent, QWidget& realViewport, AdoptTag)
+        : QWidget(parent)
+    {
+        setMinimumSize(32, 32);
+        m_adoptedRealViewport = &realViewport;
+        realViewport.hide();
+        realViewport.setParent(nullptr);
+        realViewport.setParent(this);
+        realViewport.setMinimumSize(32, 32);
+
+        m_viewportWidget = FindRealRenderViewport(realViewport);
+        AZ_Error("HammerWidget", m_viewportWidget, "Could not resolve the adopted real viewport's inner RenderViewportWidget");
+        m_viewportWidget && (m_viewportWidget->installEventFilter(this), true);
+
+        SyncAdoptedGeometry();
+
+        m_sceneInitialized = true;
+
+        ApplyActiveState();
+        ApplyRenderTickState();
     }
 
     HammerWidget::~HammerWidget()
@@ -276,33 +306,10 @@ namespace Hammer
         return new HammerWidget(parent, realViewport, AdoptTag{});
     }
 
-    HammerWidget::HammerWidget(QWidget* parent, QWidget& realViewport, AdoptTag)
-        : QWidget(parent)
-    {
-        setMinimumSize(32, 32);
-        m_adoptedRealViewport = &realViewport;
-        realViewport.hide();
-        realViewport.setParent(nullptr);
-        realViewport.setParent(this);
-        realViewport.setMinimumSize(32, 32);
-
-        m_viewportWidget = FindRealRenderViewport(&realViewport);
-        AZ_Error("HammerWidget", m_viewportWidget, "Could not resolve the adopted real viewport's inner RenderViewportWidget");
-        m_viewportWidget && (m_viewportWidget->installEventFilter(this), true);
-
-        SyncAdoptedGeometry();
-
-        m_sceneInitialized = true;
-
-        ApplyActiveState();
-        ApplyRenderTickState();
-    }
-
     void HammerWidget::SyncAdoptedGeometry()
     {
-        m_adoptedRealViewport && (Platform::SyncAdoptedViewportGeometry(*m_adoptedRealViewport, rect()), true);
-        m_viewportWidget &&
-            (Platform::SyncAdoptedViewportGeometry(*m_viewportWidget, QRect(QPoint(0, 0), rect().size())), true);
+        m_adoptedRealViewport && (m_adoptedRealViewport->setGeometry(rect()), true);
+        m_viewportWidget && (m_viewportWidget->setGeometry(QRect(QPoint(0, 0), rect().size())), true);
     }
 
     void HammerWidget::resizeEvent(QResizeEvent* event)
@@ -352,15 +359,14 @@ namespace Hammer
         AZ::RPI::ViewportContextPtr viewportContext = m_viewportWidget->GetViewportContext();
         (viewportContext && !m_pipelineChangedHandler.IsConnected()) &&
             (m_pipelineChangedHandler = AZ::RPI::ViewportContext::PipelineChangedEvent::Handler(
-                 [this, viewportContext](AZ::RPI::RenderPipelinePtr pipeline)
+                 [this, viewportContext](AZ::RPI::RenderPipelinePtr)
                  {
-                     AZ_UNUSED(pipeline);
                      SetOverlayPassEnabled(viewportContext, m_active);
                  }),
              viewportContext->ConnectCurrentPipelineChangedHandler(m_pipelineChangedHandler),
              true);
         SetOverlayPassEnabled(viewportContext, m_active);
-        SyncViewportContextName(viewportContext, m_viewportWidget->GetId(), m_active, m_adoptedRealViewport != nullptr);
+        SyncViewportContextName(viewportContext, m_active, m_adoptedRealViewport != nullptr);
     }
 
     void HammerWidget::InitializeSceneIfReady()
@@ -402,16 +408,17 @@ namespace Hammer
         m_cameraController &&
             (m_viewportWidget->GetControllerList()->Remove(m_cameraController), m_cameraController = nullptr, true);
 
-        auto* prefabEditorEntityOwnershipInterface = AZ::Interface<AzToolsFramework::PrefabEditorEntityOwnershipInterface>::Get();
+        auto* prefabInterface = AZ::Interface<AzToolsFramework::PrefabEditorEntityOwnershipInterface>::Get();
         const bool canCreateCameraEntity =
-            !m_cameraEntityId.IsValid() && prefabEditorEntityOwnershipInterface && prefabEditorEntityOwnershipInterface->IsRootPrefabAssigned();
+            !m_cameraEntityId.IsValid() && prefabInterface && prefabInterface->IsRootPrefabAssigned();
 
         canCreateCameraEntity &&
             (AzToolsFramework::EditorEntityContextRequestBus::BroadcastResult(
                  m_cameraEntityId, &AzToolsFramework::EditorEntityContextRequests::CreateNewEditorEntity,
                  AZStd::string::format("Hammer Viewport %d Camera", m_viewportWidget->GetId()).c_str()),
-             AzToolsFramework::AddComponents<AzToolsFramework::Components::TransformComponent, HammerViewportCameraComponent>::ToEntities(
-                 m_cameraEntityId),
+             AzToolsFramework::EntityCompositionRequestBus::Broadcast(
+                 &AzToolsFramework::EntityCompositionRequests::AddComponentsToEntities,
+                 AzToolsFramework::EntityIdList{ m_cameraEntityId }, AZ::ComponentTypeList{ EditorCameraComponentTypeId }),
              true);
 
         m_cameraController = BuildViewportCameraController(m_viewportWidget->GetId(), m_cameraEntityId);

@@ -125,7 +125,6 @@ if(PAL_TRAIT_BUILD_HOST_TOOLS)
         NAMESPACE Gem
         AUTOMOC
         AUTORCC
-        AUTOUIC
         FILES_CMAKE
             hammer_editor_private_files.cmake
             ${pal_dir}/hammer_editor_private_files.cmake

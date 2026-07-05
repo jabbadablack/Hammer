@@ -1,6 +1,5 @@
 #pragma once
 
-#include <AzCore/std/smart_ptr/unique_ptr.h>
 #include <AzFramework/Viewport/MultiViewportController.h>
 #include <AzFramework/Viewport/ViewportId.h>
 #include <AzFramework/Visibility/EntityVisibilityQuery.h>
@@ -9,7 +8,6 @@
 namespace Hammer
 {
     class HammerViewportDisplayControllerInstance;
-    class HammerEditorViewportSettings;
 
     class HammerViewportDisplayController final
         : public AzFramework::MultiViewportController<
@@ -20,6 +18,7 @@ namespace Hammer
     class HammerViewportDisplayControllerInstance final
         : public AzFramework::MultiViewportControllerInstanceInterface<HammerViewportDisplayController>
         , public AzToolsFramework::ViewportInteraction::EditorEntityViewportInteractionRequestBus::Handler
+        , public AzToolsFramework::ViewportInteraction::ViewportSettingsRequestBus::Handler
     {
     public:
         HammerViewportDisplayControllerInstance(AzFramework::ViewportId viewport, HammerViewportDisplayController* controller);
@@ -29,10 +28,23 @@ namespace Hammer
 
         void FindVisibleEntities(AZStd::vector<AZ::EntityId>& visibleEntities) override;
 
+        bool GridSnappingEnabled() const override;
+        float GridSize() const override;
+        bool ShowGrid() const override;
+        bool AngleSnappingEnabled() const override;
+        float AngleStep() const override;
+        float ManipulatorLineBoundWidth() const override;
+        float ManipulatorCircleBoundWidth() const override;
+        bool StickySelectEnabled() const override;
+        AZ::Vector3 DefaultEditorCameraPosition() const override;
+        AZ::Vector2 DefaultEditorCameraOrientation() const override;
+        bool IconsVisible() const override;
+        bool HelpersVisible() const override;
+        bool OnlyShowHelpersForSelectedEntities() const override;
+
     private:
         void RefreshDisplay();
 
         AzFramework::EntityVisibilityQuery m_entityVisibilityQuery;
-        AZStd::unique_ptr<HammerEditorViewportSettings> m_viewportSettings;
     };
 }

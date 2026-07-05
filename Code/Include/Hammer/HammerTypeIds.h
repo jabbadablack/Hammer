@@ -5,7 +5,6 @@ namespace Hammer
 {
     inline constexpr const char* HammerSystemComponentTypeId = "{7AD1C518-DF9D-4712-80AB-C7BBDB5A6366}";
     inline constexpr const char* HammerEditorSystemComponentTypeId = "{FCED3F35-EF1F-47AA-BC60-80A89661D94B}";
-    inline constexpr const char* HammerViewportCameraComponentTypeId = "{4E7D1139-0DE2-44B4-9091-1FA25008338F}";
 
     inline constexpr const char* HammerModuleInterfaceTypeId = "{6772D9A3-F6B2-44FD-B1F4-773DA576C5C8}";
     inline constexpr const char* HammerModuleTypeId = "{45933550-7A7E-4711-901D-E04531D5566D}";

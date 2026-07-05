@@ -1,56 +1,52 @@
 #include "HammerViewportLayoutWidget.h"
 #include "HammerWidget.h"
 
-#include "HammerQtEnvironment.h"
-
-#include <AzToolsFramework/Viewport/ViewportSettings.h>
-#include <Editor/EditorViewportSettings.h>
-
 #include <AzCore/Component/TransformBus.h>
 #include <AzCore/std/algorithm.h>
-#include <AzCore/std/containers/array.h>
 #include <AzFramework/Viewport/CameraState.h>
+#include <AzToolsFramework/Viewport/ViewportSettings.h>
+#include <Editor/EditorViewportSettings.h>
 
 #include <QEvent>
 #include <QGridLayout>
 #include <QTimer>
-
-#include <Tools/ui_HammerViewportLayoutWidget.h>
+#include <QVBoxLayout>
 
 namespace Hammer
 {
     HammerViewportLayoutWidget::HammerViewportLayoutWidget(QWidget* parent)
         : QWidget(parent)
-        , m_ui(new Ui::HammerViewportLayoutWidgetClass())
     {
         AZ_Assert(
             !HammerEditorActiveViewportRequestBus::HasHandlers(),
             "HammerViewportLayoutWidget constructed while another HammerEditorActiveViewportRequestBus handler exists");
-        HammerEditorActiveViewportRequestBus::Handler::BusConnect();
 
-        m_ui->setupUi(this);
-        m_gridContainer = m_ui->gridContainer;
-        m_gridLayout = m_ui->gridLayout;
+        auto* outerLayout = new QVBoxLayout(this);
+        outerLayout->setContentsMargins(0, 0, 0, 0);
+        outerLayout->setSpacing(0);
+
+        m_gridContainer = new QWidget(this);
+        m_gridLayout = new QGridLayout(m_gridContainer);
+        m_gridLayout->setContentsMargins(0, 0, 0, 0);
+        m_gridLayout->setSpacing(3);
+        outerLayout->addWidget(m_gridContainer);
 
         for (int i = 0; i < MaxViewportCount; ++i)
         {
             HammerWidget* viewport = new HammerWidget(m_gridContainer);
-            AZ_Assert(viewport, "Failed to allocate HammerWidget #%d", i);
-            m_viewports.push_back(viewport);
-        }
-
-        for (HammerWidget* viewport : m_viewports)
-        {
             connect(
                 viewport, &HammerWidget::ViewportFocusRequested, this,
                 [this, viewport]
                 {
                     ActivateViewport(viewport);
                 });
+            m_viewports.push_back(viewport);
         }
 
         SetViewportCount(1);
 
+        HammerEditorActiveViewportRequestBus::Handler::BusConnect();
+        HammerViewportRequestBus::Handler::BusConnect();
         AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler::BusConnect();
         Camera::EditorCameraRequestBus::Handler::BusConnect();
     }
@@ -59,6 +55,7 @@ namespace Hammer
     {
         Camera::EditorCameraRequestBus::Handler::BusDisconnect();
         AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler::BusDisconnect();
+        HammerViewportRequestBus::Handler::BusDisconnect();
         HammerEditorActiveViewportRequestBus::Handler::BusDisconnect();
     }
 
@@ -151,9 +148,7 @@ namespace Hammer
         (count != 1) && (RestoreMaximizeSwap(), true);
 
         const int columns = 1 + static_cast<int>(count > 1);
-        const int shownCount = AZStd::GetMin(count, static_cast<int>(m_viewports.size()));
-
-        ReconcileGridSlots(shownCount, columns);
+        ReconcileGridSlots(count, columns);
 
         ActivateViewport(m_viewports[0]);
 
@@ -164,16 +159,11 @@ namespace Hammer
     void HammerViewportLayoutWidget::AdoptRealPerspectiveViewport(QWidget& realViewport)
     {
         AZ_Assert(!m_adoptedViewport, "AdoptRealPerspectiveViewport called more than once");
-        AZ_Assert(
-            m_viewports.size() == MaxViewportCount, "AdoptRealPerspectiveViewport expects all %d viewports to already exist",
-            MaxViewportCount);
         AZ_Assert(m_activeViewport == m_viewports[0], "AdoptRealPerspectiveViewport expects slot 0 to still be the active viewport");
 
         HammerWidget* placeholder = m_viewports[0];
 
         HammerWidget* adopted = HammerWidget::CreateAdopting(m_gridContainer, realViewport);
-        AZ_Assert(adopted, "Failed to allocate the adopting HammerWidget");
-
         connect(
             adopted, &HammerWidget::ViewportFocusRequested, this,
             [this, adopted]
@@ -204,11 +194,11 @@ namespace Hammer
     void HammerViewportLayoutWidget::ResolveViewportUiOverlayWindow()
     {
         AZ_Assert(m_adoptedViewport, "ResolveViewportUiOverlayWindow called before the real viewport was adopted");
+        AZ_Assert(!m_overlaySyncTimer, "ResolveViewportUiOverlayWindow should only start the sync timer once");
 
-        m_viewportUiOverlayWindow || (m_viewportUiOverlayWindow = FindViewportUiOverlayWindow(m_adoptedViewport), true);
+        m_viewportUiOverlayWindow = m_adoptedViewport->findChild<QWidget*>(QStringLiteral("ViewportUiWindow"));
         m_viewportUiOverlayWindow && (m_viewportUiOverlayWindow->installEventFilter(this), true);
 
-        AZ_Assert(!m_overlaySyncTimer, "ResolveViewportUiOverlayWindow should only start the sync timer once");
         m_overlaySyncTimer = new QTimer(this);
         connect(m_overlaySyncTimer, &QTimer::timeout, this, &HammerViewportLayoutWidget::SyncViewportUiOverlay);
         m_overlaySyncTimer->start(16);
@@ -247,7 +237,6 @@ namespace Hammer
 
     void HammerViewportLayoutWidget::MaximizeActiveViewport()
     {
-        AZ_Assert(!m_viewports.empty(), "MaximizeActiveViewport called with no viewports to maximize");
         AZ_Assert(m_maximizedFromIndex == -1, "MaximizeActiveViewport called while already maximized");
         AZ_Assert(m_activeViewport, "MaximizeActiveViewport called before any viewport was ever activated");
 
@@ -275,8 +264,6 @@ namespace Hammer
 
     void HammerViewportLayoutWidget::ToggleMaximizeActiveViewport()
     {
-        AZ_Assert(!m_viewports.empty(), "ToggleMaximizeActiveViewport called with no viewports");
-
         using Action = void (HammerViewportLayoutWidget::*)();
         static constexpr AZStd::array<Action, 2> Actions = {
             &HammerViewportLayoutWidget::MaximizeActiveViewport, &HammerViewportLayoutWidget::RestoreFromMaximize

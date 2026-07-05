@@ -2,7 +2,6 @@
 #include <Hammer/HammerTypeIds.h>
 #include <HammerModuleInterface.h>
 #include "HammerEditorSystemComponent.h"
-#include "HammerViewportCameraComponent.h"
 
 void InitHammerResources()
 {
@@ -24,7 +23,6 @@ namespace Hammer
 
             m_descriptors.insert(m_descriptors.end(), {
                 HammerEditorSystemComponent::CreateDescriptor(),
-                HammerViewportCameraComponent::CreateDescriptor(),
             });
         }
 
