@@ -1,34 +1,27 @@
 #pragma once
 
 #if !defined(Q_MOC_RUN)
-#include <QScopedPointer>
 #include <QWidget>
-#endif
-
-#include <AzToolsFramework/API/EditorCameraBus.h>
-#include <AzToolsFramework/Entity/EditorEntityContextBus.h>
-
 #include <AzCore/std/containers/array.h>
 #include <AzCore/std/containers/vector.h>
-#include <AzCore/std/smart_ptr/shared_ptr.h>
+#include <AzToolsFramework/API/EditorCameraBus.h>
+#include <AzToolsFramework/Entity/EditorEntityContextBus.h>
+#include <Hammer/HammerEditorViewportBus.h>
+#endif
 
 class QGridLayout;
 class QTimer;
 
-namespace Ui
-{
-    class HammerViewportLayoutWidgetClass;
-}
-
 namespace Hammer
 {
     class HammerWidget;
-    class ActiveViewportTracker;
 
     class HammerViewportLayoutWidget
         : public QWidget
         , private AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler
         , private Camera::EditorCameraRequestBus::Handler
+        , private HammerEditorActiveViewportRequestBus::Handler
+        , private HammerViewportRequestBus::Handler
     {
         Q_OBJECT
     public:
@@ -39,8 +32,8 @@ namespace Hammer
         ~HammerViewportLayoutWidget() override;
 
         void AdoptRealPerspectiveViewport(QWidget& realViewport);
-        void SetViewportCount(int count);
-        void ToggleMaximizeActiveViewport();
+        void SetViewportCount(int count) override;
+        void ToggleMaximizeActiveViewport() override;
 
     Q_SIGNALS:
         void ViewportCountChanged(int count);
@@ -60,6 +53,9 @@ namespace Hammer
         void OnStartGameModeRequest() override;
         void OnStopGameModeRequest() override;
 
+        void SetActiveViewportId(AzFramework::ViewportId viewportId) override;
+        AzFramework::ViewportId GetActiveViewportId() const override;
+
         void SetViewFromEntityPerspective(const AZ::EntityId& entityId) override;
         AZ::EntityId GetCurrentViewEntityId() override;
         bool GetActiveCameraPosition(AZ::Vector3& cameraPos) override;
@@ -70,13 +66,12 @@ namespace Hammer
         QGridLayout* m_gridLayout = nullptr;
         QWidget* m_gridContainer = nullptr;
         AZStd::vector<HammerWidget*> m_viewports;
-        AZStd::shared_ptr<ActiveViewportTracker> m_activeViewportTracker;
+        AzFramework::ViewportId m_activeViewportId = AzFramework::InvalidViewportId;
         HammerWidget* m_activeViewport = nullptr;
         HammerWidget* m_adoptedViewport = nullptr;
         HammerWidget* m_preGameModeActiveViewport = nullptr;
         QWidget* m_viewportUiOverlayWindow = nullptr;
         QTimer* m_overlaySyncTimer = nullptr;
-        QScopedPointer<Ui::HammerViewportLayoutWidgetClass> m_ui;
         AZStd::array<HammerWidget*, MaxViewportCount> m_gridSlotWidget = {};
         int m_maximizedFromIndex = -1;
         int m_preMaximizeViewportCount = MinViewportCount;

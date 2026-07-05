@@ -16,9 +16,6 @@ namespace Hammer
 
         HammerModuleInterface();
 
-        /**
-         * Add required SystemComponents to the SystemEntity.
-         */
         AZ::ComponentTypeList GetRequiredSystemComponents() const override;
     };
 }// namespace Hammer

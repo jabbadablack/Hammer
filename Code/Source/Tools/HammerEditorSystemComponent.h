@@ -1,22 +1,18 @@
 #pragma once
 
-#include <Clients/HammerSystemComponent.h>
-
-#include <Hammer/HammerEditorViewportBus.h>
-
-#include <AzToolsFramework/ActionManager/ActionManagerRegistrationNotificationBus.h>
-#include <AzToolsFramework/Entity/EditorEntityContextBus.h>
-
-#include <AzCore/std/containers/vector.h>
-#include <AzCore/std/function/function_template.h>
-#include <AzCore/std/smart_ptr/unique_ptr.h>
-
 #if !defined(Q_MOC_RUN)
 #include <QPointer>
 #endif
 
+#include <Clients/HammerSystemComponent.h>
+#include <Hammer/HammerEditorViewportBus.h>
+
+#include <AzCore/std/containers/vector.h>
+#include <AzCore/std/function/function_template.h>
+#include <AzToolsFramework/API/ToolsApplicationAPI.h>
+#include <AzToolsFramework/ActionManager/ActionManagerRegistrationNotificationBus.h>
+
 class QDockWidget;
-class QStatusBar;
 class QToolButton;
 class QWidget;
 
@@ -28,7 +24,6 @@ namespace Hammer
         : public HammerSystemComponent
         , protected AzToolsFramework::EditorEvents::Bus::Handler
         , protected AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler
-        , protected HammerViewportRequestBus::Handler
     {
         using BaseSystemComponent = HammerSystemComponent;
     public:
@@ -36,14 +31,9 @@ namespace Hammer
 
         static void Reflect(AZ::ReflectContext* context);
 
-        HammerEditorSystemComponent();
-        ~HammerEditorSystemComponent();
-
     private:
         static void GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided);
         static void GetIncompatibleServices(AZ::ComponentDescriptor::DependencyArrayType& incompatible);
-        static void GetRequiredServices(AZ::ComponentDescriptor::DependencyArrayType& required);
-        static void GetDependentServices(AZ::ComponentDescriptor::DependencyArrayType& dependent);
 
         void Activate() override;
         void Deactivate() override;
@@ -53,22 +43,15 @@ namespace Hammer
 
         void OnActionRegistrationHook() override;
 
-        void SetViewportCount(int count) override;
-        void ToggleMaximizeActiveViewport() override;
-
         void RegisterViewportPane();
         void EmbedViewportInCenter();
         void CreateViewportCountButtons();
         void DestroyViewportCountButtons();
-
         void PrepareEditorChrome();
-        QWidget* EmbedViewportPaneAsCentralWidget(
-            const char* paneName, const AZStd::function<QWidget*()>& expectedContentAccessor);
+        QWidget* EmbedViewportPaneAsCentralWidget();
         void RestoreViewportPaneToDockWidget(QWidget* content);
         void RegisterHotkeyAction(
-            const char* actionId, const char* name, const char* description, const char* category, const char* hotkey,
-            AZStd::function<void()> callback);
-        QStatusBar* GetMainWindowStatusBar() const;
+            const char* actionId, const char* name, const char* description, const char* hotkey, AZStd::function<void()> callback);
 
         QPointer<HammerViewportLayoutWidget> m_viewportLayoutWidget;
         AZStd::vector<QPointer<QToolButton>> m_viewportCountButtons;

@@ -1,23 +1,13 @@
 #pragma once
 
 #if !defined(Q_MOC_RUN)
-#include <QScopedPointer>
 #include <QWidget>
 #include <Atom/RPI.Public/ViewportContext.h>
+#include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
 #include <AzCore/Component/EntityId.h>
 #include <AzFramework/Viewport/ViewportControllerInterface.h>
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 #endif
-
-namespace AtomToolsFramework
-{
-    class RenderViewportWidget;
-}
-
-namespace Ui
-{
-    class HammerWidgetClass;
-}
 
 class QResizeEvent;
 class QShowEvent;
@@ -26,6 +16,15 @@ class QObject;
 
 namespace Hammer
 {
+    class HammerRenderViewportWidget : public AtomToolsFramework::RenderViewportWidget
+    {
+    public:
+        using RenderViewportWidget::RenderViewportWidget;
+
+        AzFramework::WindowSize GetClientAreaSize() const override;
+        AzFramework::WindowSize GetRenderResolution() const override;
+    };
+
     class HammerWidget
         : public QWidget
         , private AzToolsFramework::EditorEntityContextNotificationBus::Handler
@@ -69,7 +68,6 @@ namespace Hammer
         QWidget* m_adoptedRealViewport = nullptr;
         AZ::EntityId m_cameraEntityId;
         AzFramework::ViewportControllerPtr m_cameraController;
-        QScopedPointer<Ui::HammerWidgetClass> m_ui;
         bool m_sceneInitialized = false;
         bool m_active = false;
         bool m_renderTickEnabled = true;

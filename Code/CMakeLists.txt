@@ -125,7 +125,6 @@ if(PAL_TRAIT_BUILD_HOST_TOOLS)
         NAMESPACE Gem
         AUTOMOC
         AUTORCC
-        AUTOUIC
         FILES_CMAKE
             hammer_editor_private_files.cmake
             ${pal_dir}/hammer_editor_private_files.cmake
@@ -145,8 +144,8 @@ if(PAL_TRAIT_BUILD_HOST_TOOLS)
                 Gem::Atom_RPI.Edit
                 Gem::Atom_RPI.Public
                 Gem::Atom_Feature_Common.Public
-                Gem::AtomViewportDisplayInfo
-                Gem::EditorModeFeedback.Editor.Static
+                Legacy::EditorLib
+                Legacy::Editor.Headers
     )
 
     ly_add_target(
