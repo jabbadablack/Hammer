@@ -13,7 +13,6 @@ void MainPS(VsOutput IN, uint primitiveId : SV_PrimitiveID)
     const uint lockId = primitiveId + 1;
     uint previousId = 0;
     InterlockedExchange(PassSrg::m_lock[quad], lockId, previousId);
-    const uint increment = uint(previousId != lockId);
     uint previousCount = 0;
-    InterlockedAdd(PassSrg::m_count[quad], increment, previousCount);
+    InterlockedAdd(PassSrg::m_count[quad], uint(previousId != lockId), previousCount);
 }

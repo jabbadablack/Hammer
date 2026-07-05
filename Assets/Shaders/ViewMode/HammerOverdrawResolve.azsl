@@ -9,8 +9,16 @@ ShaderResourceGroup PassSrg : SRG_PerPass
 
 PSOutput MainPS(VSOutput IN)
 {
-    const uint2 quad = uint2(IN.m_position.xy) >> 1;
-    const uint count = PassSrg::m_count[quad];
+    const float2 quadCoord = IN.m_position.xy * 0.5 - 0.5;
+    const float2 quadBase = floor(quadCoord);
+    const float2 quadFrac = quadCoord - quadBase;
+    const int2 base = int2(max(quadBase, 0.0));
+
+    const float c00 = float(PassSrg::m_count[uint2(base)]);
+    const float c10 = float(PassSrg::m_count[uint2(base + int2(1, 0))]);
+    const float c01 = float(PassSrg::m_count[uint2(base + int2(0, 1))]);
+    const float c11 = float(PassSrg::m_count[uint2(base + int2(1, 1))]);
+    const float count = lerp(lerp(c00, c10, quadFrac.x), lerp(c01, c11, quadFrac.x), quadFrac.y);
 
     static const float3 Ramp[6] = {
         float3(0.0, 0.0, 0.0),
@@ -21,10 +29,13 @@ PSOutput MainPS(VSOutput IN)
         float3(0.9, 0.05, 0.05)
     };
 
-    const uint rampIndex = min(count, 5u);
-    const float alpha = 0.65 * saturate(float(count));
+    const float level = clamp(count, 0.0, 5.0);
+    const uint lowIndex = uint(level);
+    const uint highIndex = min(lowIndex + 1u, 5u);
+    const float3 color = lerp(Ramp[lowIndex], Ramp[highIndex], level - float(lowIndex));
+    const float alpha = saturate(count);
 
     PSOutput OUT;
-    OUT.m_color = float4(Ramp[rampIndex], alpha);
+    OUT.m_color = float4(color, alpha);
     return OUT;
 }
