@@ -40,9 +40,11 @@ namespace Hammer
 
             AZ::RPI::Ptr<AZ::RPI::Pass> twoDPass;
             pipeline && (twoDPass = pipeline->FindFirstPass(AZ::Name("2DPass")), true);
+
             AZ_Error(
-                "HammerWidget", twoDPass,
+                "HammerWidget", !pipeline || twoDPass,
                 "Could not find this viewport's own \"2DPass\" - entity icons may keep rendering in inactive viewports");
+
             twoDPass && (twoDPass->SetEnabled(enabled), true);
         }
 
@@ -189,6 +191,15 @@ namespace Hammer
              true);
 
         AZ::RPI::ViewportContextPtr viewportContext = m_viewportWidget->GetViewportContext();
+        (viewportContext && !m_pipelineChangedHandler.IsConnected()) &&
+            (m_pipelineChangedHandler = AZ::RPI::ViewportContext::PipelineChangedEvent::Handler(
+                 [this, viewportContext](AZ::RPI::RenderPipelinePtr pipeline)
+                 {
+                     AZ_UNUSED(pipeline);
+                     SetOverlayPassEnabled(viewportContext, m_active);
+                 }),
+             viewportContext->ConnectCurrentPipelineChangedHandler(m_pipelineChangedHandler),
+             true);
         SetOverlayPassEnabled(viewportContext, m_active);
         SyncViewportContextName(viewportContext, m_viewportWidget->GetId(), m_active, m_adoptedRealViewport != nullptr);
     }

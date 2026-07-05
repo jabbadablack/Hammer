@@ -3,6 +3,7 @@
 #if !defined(Q_MOC_RUN)
 #include <QScopedPointer>
 #include <QWidget>
+#include <Atom/RPI.Public/ViewportContext.h>
 #endif
 
 namespace AtomToolsFramework
@@ -61,5 +62,6 @@ namespace Hammer
         bool m_sceneInitialized = false;
         bool m_active = false;
         bool m_renderTickEnabled = true;
+        AZ::RPI::ViewportContext::PipelineChangedEvent::Handler m_pipelineChangedHandler;
     };
 }
