@@ -4,9 +4,7 @@
 #include <QWidget>
 #include <Atom/RPI.Public/ViewportContext.h>
 #include <AtomToolsFramework/Viewport/RenderViewportWidget.h>
-#include <AzCore/Component/EntityId.h>
 #include <AzFramework/Viewport/ViewportControllerInterface.h>
-#include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 #endif
 
 class QResizeEvent;
@@ -34,7 +32,6 @@ namespace Hammer
 
     class HammerWidget
         : public QWidget
-        , private AzToolsFramework::EditorEntityContextNotificationBus::Handler
     {
     Q_OBJECT
     public:
@@ -50,7 +47,6 @@ namespace Hammer
         HammerViewModes GetViewModes() const;
         void SetGameModeSuppressed(bool suppressed);
 
-        AZ::EntityId GetCameraEntityId() const;
         AzFramework::ViewportId GetViewportId() const;
 
     Q_SIGNALS:
@@ -75,11 +71,8 @@ namespace Hammer
         void SyncAdoptedGeometry();
         void SetupCamera();
 
-        void OnContextReset() override;
-
         AtomToolsFramework::RenderViewportWidget* m_viewportWidget = nullptr;
         QWidget* m_adoptedRealViewport = nullptr;
-        AZ::EntityId m_cameraEntityId;
         AzFramework::ViewportControllerPtr m_cameraController;
         HammerViewModes m_viewModes;
         bool m_viewModesSuppressed = false;

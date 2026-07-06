@@ -2,15 +2,19 @@
 
 #if !defined(Q_MOC_RUN)
 #include <QWidget>
-#include <AzCore/std/containers/array.h>
 #include <AzCore/std/containers/vector.h>
 #include <AzToolsFramework/API/EditorCameraBus.h>
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 #include <Hammer/HammerEditorViewportBus.h>
 #endif
 
-class QGridLayout;
 class QTimer;
+
+namespace AzQtComponents
+{
+    class DockMainWindow;
+    class FancyDocking;
+} // namespace AzQtComponents
 
 namespace Hammer
 {
@@ -66,8 +70,8 @@ namespace Hammer
         AZStd::optional<float> GetCameraFoV() override;
         bool GetActiveCameraState(AzFramework::CameraState& cameraState) override;
 
-        QGridLayout* m_gridLayout = nullptr;
-        QWidget* m_gridContainer = nullptr;
+        AzQtComponents::DockMainWindow* m_dockHost = nullptr;
+        AzQtComponents::FancyDocking* m_fancyDocking = nullptr;
         AZStd::vector<HammerWidget*> m_viewports;
         AzFramework::ViewportId m_activeViewportId = AzFramework::InvalidViewportId;
         HammerWidget* m_activeViewport = nullptr;
@@ -75,7 +79,6 @@ namespace Hammer
         HammerWidget* m_preGameModeActiveViewport = nullptr;
         QWidget* m_viewportUiOverlayWindow = nullptr;
         QTimer* m_overlaySyncTimer = nullptr;
-        AZStd::array<HammerWidget*, MaxViewportCount> m_gridSlotWidget = {};
         int m_maximizedFromIndex = -1;
         int m_preMaximizeViewportCount = MinViewportCount;
         int m_currentViewportCount = MinViewportCount;
