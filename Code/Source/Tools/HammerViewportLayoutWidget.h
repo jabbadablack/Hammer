@@ -1,6 +1,7 @@
 #pragma once
 
 #if !defined(Q_MOC_RUN)
+#include <QPointer>
 #include <QWidget>
 #include <AzCore/std/containers/vector.h>
 #include <AzToolsFramework/API/EditorCameraBus.h>
@@ -8,8 +9,10 @@
 #include <Hammer/HammerEditorViewportBus.h>
 #endif
 
+class QAction;
 class QDockWidget;
 class QTimer;
+class QToolButton;
 
 namespace AzQtComponents
 {
@@ -30,31 +33,23 @@ namespace Hammer
     {
         Q_OBJECT
     public:
-        static constexpr int MinViewportCount = 1;
         static constexpr int MaxViewportCount = 4;
 
         explicit HammerViewportLayoutWidget(QWidget* parent = nullptr);
         ~HammerViewportLayoutWidget() override;
 
         void AdoptRealPerspectiveViewport(QWidget& realViewport);
-        void SetViewportCount(int count) override;
-        void ToggleMaximizeActiveViewport() override;
         void SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw) override;
         void SetCameraMirroringEnabled(bool enabled) override;
 
     Q_SIGNALS:
-        void ViewportCountChanged(int count);
         void ActiveViewModesChanged(bool normal, bool wireframe, bool overdraw);
 
     protected:
         bool eventFilter(QObject* watched, QEvent* event) override;
 
     private:
-        void RestoreMaximizeSwap();
-        void MaximizeActiveViewport();
-        void RestoreFromMaximize();
         void ActivateViewport(HammerWidget* viewport);
-        void ReconcileGridSlots(int shownCount, int columns);
         void ResolveViewportUiOverlayWindow();
         void SyncViewportUiOverlay();
 
@@ -74,6 +69,8 @@ namespace Hammer
         AzQtComponents::DockMainWindow* m_dockHost = nullptr;
         AzQtComponents::FancyDocking* m_fancyDocking = nullptr;
         QDockWidget* m_dockAnchor = nullptr;
+        QAction* m_addViewportAction = nullptr;
+        QPointer<QToolButton> m_addViewportButton;
         AZStd::vector<HammerWidget*> m_viewports;
         AzFramework::ViewportId m_activeViewportId = AzFramework::InvalidViewportId;
         HammerWidget* m_activeViewport = nullptr;
@@ -81,10 +78,6 @@ namespace Hammer
         HammerWidget* m_preGameModeActiveViewport = nullptr;
         QWidget* m_viewportUiOverlayWindow = nullptr;
         QTimer* m_overlaySyncTimer = nullptr;
-        int m_maximizedFromIndex = -1;
-        int m_preMaximizeViewportCount = MinViewportCount;
-        int m_currentViewportCount = MinViewportCount;
-        bool m_adoptedViewportHiddenBehindMaximize = false;
         bool m_cameraMirroringEnabled = false;
     };
 } // namespace Hammer

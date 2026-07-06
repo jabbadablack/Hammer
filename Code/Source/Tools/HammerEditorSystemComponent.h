@@ -8,7 +8,6 @@
 #include <Hammer/HammerEditorViewportBus.h>
 
 #include <AzCore/std/containers/vector.h>
-#include <AzCore/std/function/function_template.h>
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
 #include <AzToolsFramework/ActionManager/ActionManagerRegistrationNotificationBus.h>
 
@@ -42,24 +41,18 @@ namespace Hammer
         void NotifyRegisterViews() override;
         void NotifyEditorInitialized() override;
 
-        void OnActionRegistrationHook() override;
         void OnWidgetActionRegistrationHook() override;
         void OnToolBarBindingHook() override;
 
         void RegisterViewportPane();
         void EmbedViewportInCenter();
-        void CreateViewportCountButtons();
-        void DestroyViewportCountButtons();
         QWidget* CreateViewModeToolBarButton();
         void ConnectViewModeSwitcherSync();
         void PrepareEditorChrome();
         QWidget* EmbedViewportPaneAsCentralWidget();
         void RestoreViewportPaneToDockWidget(QWidget* content);
-        void RegisterHotkeyAction(
-            const char* actionId, const char* name, const char* description, const char* hotkey, AZStd::function<void()> callback);
 
         QPointer<HammerViewportLayoutWidget> m_viewportLayoutWidget;
-        AZStd::vector<QPointer<QToolButton>> m_viewportCountButtons;
         AZStd::vector<QPointer<QToolButton>> m_viewModeButtons;
         QPointer<QDockWidget> m_paneDockWidget;
     };
