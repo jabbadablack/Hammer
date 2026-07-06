@@ -345,6 +345,8 @@ namespace Hammer
             (m_viewportUiOverlayWindow->setGeometry(QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())),
              true);
 
+        (m_viewportUiOverlayWindow && m_viewportUiOverlayWindow->isVisible()) && (m_viewportUiOverlayWindow->raise(), true);
+
         auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
         AZ::RPI::ViewportContextPtr defaultContext;
         (m_cameraMirroringEnabled && viewportContextManager) &&
@@ -370,7 +372,7 @@ namespace Hammer
         isOverlayMoveOrResize &&
             (static_cast<QWidget*>(watched)->setGeometry(
                  QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())),
-             true);
+             static_cast<QWidget*>(watched)->raise(), true);
 
         return QWidget::eventFilter(watched, event);
     }
