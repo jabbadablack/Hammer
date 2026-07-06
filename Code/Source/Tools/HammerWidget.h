@@ -84,7 +84,7 @@ namespace Hammer
         bool m_viewModesSuppressed = false;
         bool m_sceneInitialized = false;
         bool m_active = false;
-        bool m_renderTickEnabled = true;
+        bool m_renderTickEnabled = false;
         AZ::RPI::ViewportContext::PipelineChangedEvent::Handler m_pipelineChangedHandler;
     };
 }

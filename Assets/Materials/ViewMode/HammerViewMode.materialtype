@@ -10,6 +10,10 @@
             "tag": "hammerwireframe"
         },
         {
+            "file": "../../Shaders/ViewMode/HammerWireframeHidden.shader",
+            "tag": "hammerwireframehidden"
+        },
+        {
             "file": "../../Shaders/ViewMode/HammerOverdrawCount.shader",
             "tag": "hammeroverdraw"
         }
