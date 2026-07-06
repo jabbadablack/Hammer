@@ -35,6 +35,7 @@ namespace Hammer
         void SetViewportCount(int count) override;
         void ToggleMaximizeActiveViewport() override;
         void SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw) override;
+        void SetCameraMirroringEnabled(bool enabled) override;
 
     Q_SIGNALS:
         void ViewportCountChanged(int count);
@@ -79,5 +80,6 @@ namespace Hammer
         int m_preMaximizeViewportCount = MinViewportCount;
         int m_currentViewportCount = MinViewportCount;
         bool m_adoptedViewportHiddenBehindMaximize = false;
+        bool m_cameraMirroringEnabled = false;
     };
 } // namespace Hammer

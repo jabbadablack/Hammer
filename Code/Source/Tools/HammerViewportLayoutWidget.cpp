@@ -1,7 +1,11 @@
 #include "HammerViewportLayoutWidget.h"
 #include "HammerWidget.h"
 
+#include <Atom/RPI.Public/ViewportContext.h>
+#include <Atom/RPI.Public/ViewportContextBus.h>
+#include <AtomToolsFramework/Viewport/ModularViewportCameraControllerRequestBus.h>
 #include <AzCore/Component/TransformBus.h>
+#include <AzCore/Interface/Interface.h>
 #include <AzCore/std/algorithm.h>
 #include <AzFramework/Viewport/CameraState.h>
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
@@ -215,6 +219,11 @@ namespace Hammer
         m_overlaySyncTimer->start(16);
     }
 
+    void HammerViewportLayoutWidget::SetCameraMirroringEnabled(bool enabled)
+    {
+        m_cameraMirroringEnabled = enabled;
+    }
+
     void HammerViewportLayoutWidget::SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw)
     {
         m_activeViewport &&
@@ -229,6 +238,21 @@ namespace Hammer
         shouldChase &&
             (m_viewportUiOverlayWindow->setGeometry(QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())),
              true);
+
+        auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
+        AZ::RPI::ViewportContextPtr defaultContext;
+        (m_cameraMirroringEnabled && viewportContextManager) &&
+            (defaultContext = viewportContextManager->GetDefaultViewportContext(), true);
+
+        const AZ::Transform mirrored = defaultContext ? defaultContext->GetCameraTransform() : AZ::Transform::CreateIdentity();
+        for (HammerWidget* viewport : m_viewports)
+        {
+            (defaultContext && viewport != m_adoptedViewport) &&
+                (AtomToolsFramework::ModularViewportCameraControllerRequestBus::Event(
+                     viewport->GetViewportId(),
+                     &AtomToolsFramework::ModularViewportCameraControllerRequests::StartTrackingTransform, mirrored),
+                 true);
+        }
     }
 
     bool HammerViewportLayoutWidget::eventFilter(QObject* watched, QEvent* event)

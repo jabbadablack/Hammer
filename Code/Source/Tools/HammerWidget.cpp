@@ -62,7 +62,13 @@ namespace Hammer
             return renderViewport;
         }
 
-        void SetOverlayPassEnabled(AZ::RPI::ViewportContextPtr viewportContext, bool enabled)
+        void SetNamedPassEnabled(AZ::RPI::RenderPipeline& pipeline, const char* passName, bool enabled)
+        {
+            AZ::RPI::Ptr<AZ::RPI::Pass> pass = pipeline.FindFirstPass(AZ::Name(passName));
+            pass && (pass->SetEnabled(enabled), true);
+        }
+
+        void SetActivePassesEnabled(AZ::RPI::ViewportContextPtr viewportContext, bool enabled)
         {
             AZ::RPI::RenderPipelinePtr pipeline;
             viewportContext && (pipeline = viewportContext->GetCurrentPipeline(), true);
@@ -75,6 +81,10 @@ namespace Hammer
                 "Could not find this viewport's own \"2DPass\" - entity icons may keep rendering in inactive viewports");
 
             twoDPass && (twoDPass->SetEnabled(enabled), true);
+            pipeline &&
+                (SetNamedPassEnabled(*pipeline, "Shadows", enabled),
+                 SetNamedPassEnabled(*pipeline, "MotionVectorPass", enabled),
+                 SetNamedPassEnabled(*pipeline, "RayTracingAccelerationStructurePass", enabled), true);
         }
 
         void SyncViewportContextName(AZ::RPI::ViewportContextPtr viewportContext, bool active, bool isAdoptedViewport)
@@ -108,12 +118,6 @@ namespace Hammer
             AZ::RPI::RenderPipelinePtr pipeline;
             viewportContext && (pipeline = viewportContext->GetCurrentPipeline(), true);
             pipeline && (RenderTickActions[static_cast<size_t>(enabled)](*pipeline), true);
-        }
-
-        void SetNamedPassEnabled(AZ::RPI::RenderPipeline& pipeline, const char* passName, bool enabled)
-        {
-            AZ::RPI::Ptr<AZ::RPI::Pass> pass = pipeline.FindFirstPass(AZ::Name(passName));
-            pass && (pass->SetEnabled(enabled), true);
         }
 
         void SetViewModePassesEnabled(AZ::RPI::ViewportContextPtr viewportContext, const HammerViewModes& viewModes)
@@ -385,7 +389,7 @@ namespace Hammer
     void HammerWidget::SetGameModeSuppressed(bool suppressed)
     {
         m_viewModesSuppressed = suppressed;
-        (m_sceneInitialized && m_viewportWidget) && (ApplyViewModes(), true);
+        (m_sceneInitialized && m_viewportWidget) && (ApplyViewModes(), ApplyRenderTickState(), true);
     }
 
     void HammerWidget::ApplyViewModes()
@@ -402,6 +406,7 @@ namespace Hammer
         AZ_Assert(m_sceneInitialized, "ApplyActiveState called before the scene was initialized");
 
         m_viewportWidget->SetInputProcessingEnabled(m_active);
+        ApplyRenderTickState();
 
         m_active &&
             (HammerEditorActiveViewportRequestBus::Broadcast(
@@ -413,12 +418,12 @@ namespace Hammer
             (m_pipelineChangedHandler = AZ::RPI::ViewportContext::PipelineChangedEvent::Handler(
                  [this, viewportContext](AZ::RPI::RenderPipelinePtr)
                  {
-                     SetOverlayPassEnabled(viewportContext, m_active);
+                     SetActivePassesEnabled(viewportContext, m_active);
                      ApplyViewModes();
                  }),
              viewportContext->ConnectCurrentPipelineChangedHandler(m_pipelineChangedHandler),
              true);
-        SetOverlayPassEnabled(viewportContext, m_active);
+        SetActivePassesEnabled(viewportContext, m_active);
         SyncViewportContextName(viewportContext, m_active, m_adoptedRealViewport != nullptr);
     }
 
@@ -489,10 +494,17 @@ namespace Hammer
     {
         AZ_Assert(m_viewportWidget, "ApplyRenderTickState called without an initialized viewport widget");
         SetPipelineRenderTickEnabled(m_viewportWidget->GetViewportContext(), m_renderTickEnabled);
+        (!m_adoptedRealViewport) &&
+            (m_viewportWidget->GetControllerList()->SetEnabled(m_renderTickEnabled && !m_viewModesSuppressed), true);
     }
 
     AZ::EntityId HammerWidget::GetCameraEntityId() const
     {
         return m_cameraEntityId;
+    }
+
+    AzFramework::ViewportId HammerWidget::GetViewportId() const
+    {
+        return m_viewportWidget ? m_viewportWidget->GetId() : AzFramework::InvalidViewportId;
     }
 }

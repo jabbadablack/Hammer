@@ -83,7 +83,8 @@ namespace Hammer
                  ->Attribute(AZ::Script::Attributes::Category, "Editor")
                  ->Attribute(AZ::Script::Attributes::Module, "hammer")
                  ->Event("SetViewportCount", &HammerViewportRequestBus::Events::SetViewportCount)
-                 ->Event("ToggleMaximizeActiveViewport", &HammerViewportRequestBus::Events::ToggleMaximizeActiveViewport),
+                 ->Event("ToggleMaximizeActiveViewport", &HammerViewportRequestBus::Events::ToggleMaximizeActiveViewport)
+                 ->Event("SetCameraMirroringEnabled", &HammerViewportRequestBus::Events::SetCameraMirroringEnabled),
              true);
     }
 
@@ -224,6 +225,17 @@ namespace Hammer
                 });
         }
         normalAction->setChecked(true);
+
+        menu->addSeparator();
+        QAction* mirrorAction = menu->addAction(QObject::tr("Mirror Main Camera"));
+        mirrorAction->setCheckable(true);
+        QObject::connect(
+            mirrorAction, &QAction::toggled, button,
+            [](bool checked)
+            {
+                HammerViewportRequestBus::Broadcast(&HammerViewportRequests::SetCameraMirroringEnabled, checked);
+            });
+
         button->setMenu(menu);
 
         m_viewModeButtons.push_back(button);
@@ -243,7 +255,7 @@ namespace Hammer
                      [button = button.data()](bool normal, bool wireframe, bool overdraw)
                      {
                          const QList<QAction*> actions = button->menu()->actions();
-                         (actions.size() == 3) &&
+                         (actions.size() >= 3) &&
                              (actions[0]->setChecked(normal), actions[1]->setChecked(wireframe),
                               actions[2]->setChecked(overdraw), true);
                      }),
