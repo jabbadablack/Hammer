@@ -32,7 +32,6 @@ namespace Hammer
         AZ_Assert(
             !HammerEditorActiveViewportRequestBus::HasHandlers(),
             "HammerViewportLayoutWidget constructed while another HammerEditorActiveViewportRequestBus handler exists");
-        AZ_Assert(parent, "HammerViewportLayoutWidget expects the view pane to provide a parent widget");
 
         QFile styleSheetFile(QStringLiteral(":/Hammer/Hammer.qss"));
         const bool styleSheetLoaded = styleSheetFile.open(QFile::ReadOnly);
@@ -335,7 +334,10 @@ namespace Hammer
             (m_viewportUiOverlayWindow->setGeometry(QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())),
              true);
 
-        (m_viewportUiOverlayWindow && m_viewportUiOverlayWindow->isVisible()) && (m_viewportUiOverlayWindow->raise(), true);
+        QWidget* activeViewportWindow = m_activeViewport ? m_activeViewport->window() : nullptr;
+        (m_viewportUiOverlayWindow && m_viewportUiOverlayWindow->isVisible() && activeViewportWindow &&
+         activeViewportWindow->isActiveWindow()) &&
+            (m_viewportUiOverlayWindow->raise(), true);
 
         auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
         AZ::RPI::ViewportContextPtr defaultContext;
@@ -362,7 +364,7 @@ namespace Hammer
         isOverlayMoveOrResize &&
             (static_cast<QWidget*>(watched)->setGeometry(
                  QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())),
-             static_cast<QWidget*>(watched)->raise(), true);
+             true);
 
         return QWidget::eventFilter(watched, event);
     }
