@@ -1,0 +1,21 @@
+QToolButton#HammerAddViewportButton
+{
+    background-color: transparent;
+    border: none;
+    padding: 0px;
+    min-width: 18px;
+    max-width: 18px;
+    min-height: 18px;
+    max-height: 18px;
+}
+
+QToolButton#HammerAddViewportButton:hover
+{
+    background-color: rgba(255, 255, 255, 32);
+    border-radius: 2px;
+}
+
+QToolButton#HammerAddViewportButton:pressed
+{
+    background-color: rgba(255, 255, 255, 16);
+}
