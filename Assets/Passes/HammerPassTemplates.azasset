@@ -13,6 +13,10 @@
                 "Path": "Passes/HammerWireframe.pass"
             },
             {
+                "Name": "HammerWireframeHiddenPassTemplate",
+                "Path": "Passes/HammerWireframeHidden.pass"
+            },
+            {
                 "Name": "HammerOverdrawCountPassTemplate",
                 "Path": "Passes/HammerOverdrawCount.pass"
             },

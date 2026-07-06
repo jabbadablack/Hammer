@@ -135,18 +135,32 @@ namespace Hammer
         AZ::RPI::Ptr<AZ::RPI::Pass> backgroundPass = passSystem->CreatePassFromRequest(&backgroundRequest);
         backgroundPass && (renderPipeline.AddPassAfter(backgroundPass, AZ::Name("PostProcessPass")), true);
 
+        AZ::RPI::PassRequest wireframeHiddenRequest;
+        wireframeHiddenRequest.m_passName = AZ::Name("HammerWireframeHiddenPass");
+        wireframeHiddenRequest.m_templateName = AZ::Name("HammerWireframeHiddenPassTemplate");
+        wireframeHiddenRequest.m_passEnabled = false;
+        wireframeHiddenRequest.AddInputConnection(AZ::RPI::PassConnection{
+            AZ::Name("ColorInputOutput"),
+            AZ::RPI::PassAttachmentRef{ AZ::Name("HammerViewModeBackgroundPass"), AZ::Name("ColorInputOutput") } });
+        wireframeHiddenRequest.AddInputConnection(AZ::RPI::PassConnection{
+            AZ::Name("DepthInputOutput"), AZ::RPI::PassAttachmentRef{ AZ::Name("DepthPrePass"), AZ::Name("Depth") } });
+        AZ::RPI::Ptr<AZ::RPI::Pass> wireframeHiddenPass;
+        backgroundPass && (wireframeHiddenPass = passSystem->CreatePassFromRequest(&wireframeHiddenRequest), true);
+        wireframeHiddenPass &&
+            (renderPipeline.AddPassAfter(wireframeHiddenPass, AZ::Name("HammerViewModeBackgroundPass")), true);
+
         AZ::RPI::PassRequest wireframeRequest;
         wireframeRequest.m_passName = AZ::Name("HammerWireframePass");
         wireframeRequest.m_templateName = AZ::Name("HammerWireframePassTemplate");
         wireframeRequest.m_passEnabled = false;
         wireframeRequest.AddInputConnection(AZ::RPI::PassConnection{
             AZ::Name("ColorInputOutput"),
-            AZ::RPI::PassAttachmentRef{ AZ::Name("HammerViewModeBackgroundPass"), AZ::Name("ColorInputOutput") } });
+            AZ::RPI::PassAttachmentRef{ AZ::Name("HammerWireframeHiddenPass"), AZ::Name("ColorInputOutput") } });
         wireframeRequest.AddInputConnection(AZ::RPI::PassConnection{
             AZ::Name("DepthInputOutput"), AZ::RPI::PassAttachmentRef{ AZ::Name("DepthPrePass"), AZ::Name("Depth") } });
         AZ::RPI::Ptr<AZ::RPI::Pass> wireframePass;
-        backgroundPass && (wireframePass = passSystem->CreatePassFromRequest(&wireframeRequest), true);
-        wireframePass && (renderPipeline.AddPassAfter(wireframePass, AZ::Name("HammerViewModeBackgroundPass")), true);
+        wireframeHiddenPass && (wireframePass = passSystem->CreatePassFromRequest(&wireframeRequest), true);
+        wireframePass && (renderPipeline.AddPassAfter(wireframePass, AZ::Name("HammerWireframeHiddenPass")), true);
 
         AZ::RPI::PassRequest countRequest;
         countRequest.m_passName = AZ::Name("HammerOverdrawCountPass");
@@ -172,11 +186,13 @@ namespace Hammer
         resolvePass && (renderPipeline.AddPassAfter(resolvePass, AZ::Name("HammerOverdrawCountPass")), true);
 
         AZ_Error(
-            LogWindow, backgroundPass && wireframePass && countPass && resolvePass,
+            LogWindow, backgroundPass && wireframeHiddenPass && wireframePass && countPass && resolvePass,
             "Could not create the Hammer view-mode passes for pipeline '%s'", renderPipeline.GetId().GetCStr());
 
-        (backgroundPass && wireframePass && countPass && resolvePass) &&
-            (m_pipelinePasses[&renderPipeline] = PipelinePasses{ backgroundPass, wireframePass, countPass, resolvePass }, true);
+        (backgroundPass && wireframeHiddenPass && wireframePass && countPass && resolvePass) &&
+            (m_pipelinePasses[&renderPipeline] =
+                 PipelinePasses{ backgroundPass, wireframeHiddenPass, wireframePass, countPass, resolvePass },
+             true);
     }
 
     void HammerViewModeFeatureProcessor::RefreshPipelinePasses(AZ::RPI::RenderPipeline& renderPipeline)
@@ -186,6 +202,8 @@ namespace Hammer
         auto* passSystem = AZ::RPI::PassSystemInterface::Get();
         auto backgroundFilter =
             AZ::RPI::PassFilter::CreateWithTemplateName(AZ::Name("HammerViewModeBackgroundPassTemplate"), &renderPipeline);
+        auto wireframeHiddenFilter =
+            AZ::RPI::PassFilter::CreateWithTemplateName(AZ::Name("HammerWireframeHiddenPassTemplate"), &renderPipeline);
         auto wireframeFilter =
             AZ::RPI::PassFilter::CreateWithTemplateName(AZ::Name("HammerWireframePassTemplate"), &renderPipeline);
         auto countFilter =
@@ -194,12 +212,15 @@ namespace Hammer
             AZ::RPI::PassFilter::CreateWithTemplateName(AZ::Name("HammerOverdrawResolvePassTemplate"), &renderPipeline);
 
         AZ::RPI::Ptr<AZ::RPI::Pass> backgroundPass = passSystem->FindFirstPass(backgroundFilter);
+        AZ::RPI::Ptr<AZ::RPI::Pass> wireframeHiddenPass = passSystem->FindFirstPass(wireframeHiddenFilter);
         AZ::RPI::Ptr<AZ::RPI::Pass> wireframePass = passSystem->FindFirstPass(wireframeFilter);
         AZ::RPI::Ptr<AZ::RPI::Pass> countPass = passSystem->FindFirstPass(countFilter);
         AZ::RPI::Ptr<AZ::RPI::Pass> resolvePass = passSystem->FindFirstPass(resolveFilter);
 
-        (backgroundPass && wireframePass && countPass && resolvePass) &&
-            (m_pipelinePasses[&renderPipeline] = PipelinePasses{ backgroundPass, wireframePass, countPass, resolvePass }, true);
+        (backgroundPass && wireframeHiddenPass && wireframePass && countPass && resolvePass) &&
+            (m_pipelinePasses[&renderPipeline] =
+                 PipelinePasses{ backgroundPass, wireframeHiddenPass, wireframePass, countPass, resolvePass },
+             true);
     }
 
     void HammerViewModeFeatureProcessor::OnRenderPipelineChanged(

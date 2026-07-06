@@ -131,6 +131,7 @@ namespace Hammer
                  SetNamedPassEnabled(*pipeline, "Forward", viewModes.m_normal),
                  SetNamedPassEnabled(*pipeline, "TransparentPass", viewModes.m_normal),
                  SetNamedPassEnabled(*pipeline, "HammerViewModeBackgroundPass", flatBackground),
+                 SetNamedPassEnabled(*pipeline, "HammerWireframeHiddenPass", viewModes.m_wireframe),
                  SetNamedPassEnabled(*pipeline, "HammerWireframePass", viewModes.m_wireframe),
                  SetNamedPassEnabled(*pipeline, "HammerOverdrawCountPass", viewModes.m_overdraw),
                  SetNamedPassEnabled(*pipeline, "HammerOverdrawResolvePass", viewModes.m_overdraw), true);

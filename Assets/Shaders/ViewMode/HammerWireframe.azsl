@@ -8,6 +8,15 @@ struct PsOutput
 PsOutput MainPS(VsOutput IN)
 {
     PsOutput OUT;
-    OUT.m_color = HammerObjectSrg::m_color;
+    const float fade = saturate(16.0 / (IN.m_viewDepth + 4.0));
+    OUT.m_color = float4(HammerObjectSrg::m_color.rgb, HammerObjectSrg::m_color.a * fade);
+    return OUT;
+}
+
+PsOutput HiddenPS(VsOutput IN)
+{
+    PsOutput OUT;
+    const float fade = saturate(16.0 / (IN.m_viewDepth + 4.0));
+    OUT.m_color = float4(HammerObjectSrg::m_color.rgb, HammerObjectSrg::m_color.a * 0.25 * fade);
     return OUT;
 }

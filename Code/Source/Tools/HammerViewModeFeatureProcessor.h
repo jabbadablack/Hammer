@@ -46,6 +46,7 @@ namespace Hammer
         struct PipelinePasses
         {
             AZ::RPI::Ptr<AZ::RPI::Pass> m_background;
+            AZ::RPI::Ptr<AZ::RPI::Pass> m_wireframeHidden;
             AZ::RPI::Ptr<AZ::RPI::Pass> m_wireframe;
             AZ::RPI::Ptr<AZ::RPI::Pass> m_count;
             AZ::RPI::Ptr<AZ::RPI::Pass> m_resolve;

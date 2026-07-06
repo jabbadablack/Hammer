@@ -4,14 +4,12 @@
         "Depth": {
             "Enable": true,
             "WriteMask": "Zero",
-            "CompareFunc": "GreaterEqual"
+            "CompareFunc": "Less"
         }
     },
     "RasterState": {
         "FillMode": "Wireframe",
-        "CullMode": "None",
-        "DepthBias": 100,
-        "DepthBiasSlopeScale": 2.0
+        "CullMode": "None"
     },
     "GlobalTargetBlendState": {
         "Enable": true,
@@ -19,7 +17,7 @@
         "BlendDest": "AlphaSourceInverse",
         "BlendOp": "Add"
     },
-    "DrawList": "hammerwireframe",
+    "DrawList": "hammerwireframehidden",
     "ProgramSettings": {
         "EntryPoints": [
             {
@@ -27,7 +25,7 @@
                 "type": "Vertex"
             },
             {
-                "name": "MainPS",
+                "name": "HiddenPS",
                 "type": "Fragment"
             }
         ]
