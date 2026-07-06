@@ -51,6 +51,7 @@ namespace Hammer
         void SetGameModeSuppressed(bool suppressed);
 
         AZ::EntityId GetCameraEntityId() const;
+        AzFramework::ViewportId GetViewportId() const;
 
     Q_SIGNALS:
         void ViewportFocusRequested();

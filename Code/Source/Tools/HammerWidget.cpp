@@ -502,4 +502,9 @@ namespace Hammer
     {
         return m_cameraEntityId;
     }
+
+    AzFramework::ViewportId HammerWidget::GetViewportId() const
+    {
+        return m_viewportWidget ? m_viewportWidget->GetId() : AzFramework::InvalidViewportId;
+    }
 }
