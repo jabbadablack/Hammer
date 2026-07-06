@@ -8,6 +8,7 @@
 #include <Hammer/HammerEditorViewportBus.h>
 #endif
 
+class QDockWidget;
 class QTimer;
 
 namespace AzQtComponents
@@ -72,6 +73,7 @@ namespace Hammer
 
         AzQtComponents::DockMainWindow* m_dockHost = nullptr;
         AzQtComponents::FancyDocking* m_fancyDocking = nullptr;
+        QDockWidget* m_dockAnchor = nullptr;
         AZStd::vector<HammerWidget*> m_viewports;
         AzFramework::ViewportId m_activeViewportId = AzFramework::InvalidViewportId;
         HammerWidget* m_activeViewport = nullptr;

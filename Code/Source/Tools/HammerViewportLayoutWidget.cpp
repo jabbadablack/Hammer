@@ -58,6 +58,13 @@ namespace Hammer
 
         AZ_Assert(m_viewports.size() == MaxViewportCount, "HammerViewportLayoutWidget failed to create all %d viewports", MaxViewportCount);
 
+        m_dockAnchor = new AzQtComponents::StyledDockWidget(QStringLiteral("Viewport Dock Area"), m_dockHost);
+        m_dockAnchor->setObjectName(QStringLiteral("HammerViewportDockAnchor"));
+        m_dockAnchor->setFeatures(QDockWidget::NoDockWidgetFeatures);
+        m_dockAnchor->setTitleBarWidget(new QWidget(m_dockAnchor));
+        m_dockAnchor->setWidget(new QWidget(m_dockAnchor));
+        m_dockAnchor->hide();
+
         SetViewportCount(1);
 
         HammerEditorActiveViewportRequestBus::Handler::BusConnect();
@@ -152,8 +159,15 @@ namespace Hammer
             "ReconcileGridSlots given an out-of-range shownCount %d", shownCount);
         AZ_Assert(columns == 1 || columns == 2, "ReconcileGridSlots given an unexpected column count %d", columns);
         AZ_Assert(m_fancyDocking, "ReconcileGridSlots called before the fancy docking manager was constructed");
+        AZ_Assert(m_dockAnchor, "ReconcileGridSlots called before the dock anchor was constructed");
 
         m_adoptedViewportHiddenBehindMaximize = false;
+
+        auto* anchorTabWidget = AzQtComponents::DockTabWidget::IsTabbed(m_dockAnchor)
+            ? AzQtComponents::DockTabWidget::ParentTabWidget(m_dockAnchor)
+            : nullptr;
+        anchorTabWidget && (anchorTabWidget->removeTab(m_dockAnchor), true);
+        m_dockHost->removeDockWidget(m_dockAnchor);
 
         for (HammerWidget* viewport : m_viewports)
         {
@@ -298,10 +312,32 @@ namespace Hammer
     {
         AZ_Assert(m_overlaySyncTimer, "SyncViewportUiOverlay ticked without its timer");
         AZ_Assert(m_adoptedViewport, "SyncViewportUiOverlay ticked before the real viewport was adopted");
+        AZ_Assert(m_dockAnchor, "SyncViewportUiOverlay ticked before the dock anchor was constructed");
         auto* adoptedDock =
             m_adoptedViewport ? qobject_cast<QDockWidget*>(m_adoptedViewport->parentWidget()) : nullptr;
         (m_adoptedViewportHiddenBehindMaximize && adoptedDock) &&
             (adoptedDock->setGeometry(m_dockHost->rect()), adoptedDock->lower(), true);
+
+        bool anyViewportDocked = false;
+        for (HammerWidget* viewport : m_viewports)
+        {
+            auto* dock = qobject_cast<QDockWidget*>(viewport->parentWidget());
+            const bool hiddenBehindMaximize = m_adoptedViewportHiddenBehindMaximize && viewport == m_adoptedViewport;
+            anyViewportDocked = anyViewportDocked ||
+                (dock && !hiddenBehindMaximize && dock->isVisible() && !dock->isFloating() &&
+                 dock->window() == m_dockHost->window());
+        }
+
+        auto* anchorTabWidget = AzQtComponents::DockTabWidget::IsTabbed(m_dockAnchor)
+            ? AzQtComponents::DockTabWidget::ParentTabWidget(m_dockAnchor)
+            : nullptr;
+        const bool anchorPresent = m_dockAnchor->isVisible() || anchorTabWidget != nullptr;
+        (!anyViewportDocked && !anchorPresent) &&
+            (m_dockAnchor->setTitleBarWidget(new QWidget(m_dockAnchor)),
+             m_dockHost->addDockWidget(Qt::LeftDockWidgetArea, m_dockAnchor), m_dockAnchor->show(), true);
+        (anyViewportDocked && anchorPresent) &&
+            (anchorTabWidget && (anchorTabWidget->removeTab(m_dockAnchor), true),
+             m_dockHost->removeDockWidget(m_dockAnchor), true);
 
         const bool shouldChase = m_viewportUiOverlayWindow && m_activeViewport && m_activeViewport != m_adoptedViewport;
 
