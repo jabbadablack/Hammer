@@ -51,9 +51,9 @@ namespace Hammer
 
         for (int i = 0; i < MaxViewportCount; ++i)
         {
-            auto* dock = new AzQtComponents::StyledDockWidget(QStringLiteral("Viewport %1").arg(i + 1), m_dockHost);
+            auto* dock = new AzQtComponents::StyledDockWidget(QStringLiteral("Perspective %1").arg(i + 1), m_dockHost);
             dock->setObjectName(QStringLiteral("HammerViewportDock%1").arg(i + 1));
-            dock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
+            dock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetClosable);
             dock->hide();
 
             HammerWidget* viewport = new HammerWidget(dock);
@@ -217,7 +217,8 @@ namespace Hammer
         placeholder->SetRenderTickEnabled(false);
         placeholder->hide();
 
-        dock->setWindowTitle(QObject::tr("Perspective"));
+        dock->setWindowTitle(QObject::tr("Perspective") + QStringLiteral("   "));
+        dock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
         dock->setWidget(adopted);
         adopted->show();
         realViewport.show();
