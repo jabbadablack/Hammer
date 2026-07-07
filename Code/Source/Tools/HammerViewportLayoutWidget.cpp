@@ -7,7 +7,6 @@
 #include <AzCore/Interface/Interface.h>
 #include <AzCore/std/algorithm.h>
 #include <AzFramework/Viewport/CameraState.h>
-#include <AzQtComponents/Components/DockMainWindow.h>
 #include <AzQtComponents/Components/DockTabWidget.h>
 #include <AzQtComponents/Components/FancyDocking.h>
 #include <AzQtComponents/Components/StyledDockWidget.h>
@@ -18,11 +17,11 @@
 #include <QEvent>
 #include <QFile>
 #include <QIcon>
+#include <QMainWindow>
 #include <QStyle>
 #include <QTabBar>
 #include <QTimer>
 #include <QToolButton>
-#include <QVBoxLayout>
 
 namespace Hammer
 {
@@ -32,26 +31,31 @@ namespace Hammer
         AZ_Assert(
             !HammerEditorActiveViewportRequestBus::HasHandlers(),
             "HammerViewportLayoutWidget constructed while another HammerEditorActiveViewportRequestBus handler exists");
-        AZ_Assert(parent, "HammerViewportLayoutWidget expects the view pane to provide a parent widget");
 
-        QFile styleSheetFile(QStringLiteral(":/Hammer/Hammer.qss"));
-        const bool styleSheetLoaded = styleSheetFile.open(QFile::ReadOnly);
-        AZ_Warning("HammerViewportLayoutWidget", styleSheetLoaded, "Could not load :/Hammer/Hammer.qss");
-        styleSheetLoaded && (setStyleSheet(QString::fromUtf8(styleSheetFile.readAll())), true);
+        hide();
 
-        auto* outerLayout = new QVBoxLayout(this);
-        outerLayout->setContentsMargins(0, 0, 0, 0);
-        outerLayout->setSpacing(0);
+        const QList<QWidget*> topLevelChildren = parent ? parent->window()->findChildren<QWidget*>() : QList<QWidget*>();
+        const auto fancyDockingIt = AZStd::find_if(
+            topLevelChildren.begin(), topLevelChildren.end(),
+            [](QWidget* child)
+            {
+                return qstrcmp(child->metaObject()->className(), "AzQtComponents::FancyDocking") == 0;
+            });
+        m_fancyDocking =
+            fancyDockingIt != topLevelChildren.end() ? static_cast<AzQtComponents::FancyDocking*>(*fancyDockingIt) : nullptr;
+        AZ_Error(
+            "HammerViewportLayoutWidget", m_fancyDocking,
+            "Could not find the editor's FancyDocking manager; viewports will not be dockable");
 
-        m_dockHost = new AzQtComponents::DockMainWindow;
-        m_dockHost->setDockOptions(QMainWindow::GroupedDragging | QMainWindow::AllowNestedDocks | QMainWindow::AllowTabbedDocks);
-        outerLayout->addWidget(m_dockHost);
+        m_dockHost = m_fancyDocking ? qobject_cast<QMainWindow*>(m_fancyDocking->parentWidget()) : qobject_cast<QMainWindow*>(parent);
+        AZ_Assert(m_dockHost, "HammerViewportLayoutWidget could not resolve the editor's view pane host QMainWindow");
 
-        m_fancyDocking = new AzQtComponents::FancyDocking(m_dockHost, "hammerviewportdocking");
+        QWidget* oldCentralWidget = m_dockHost ? m_dockHost->takeCentralWidget() : nullptr;
+        oldCentralWidget && (oldCentralWidget->hide(), true);
 
         for (int i = 0; i < MaxViewportCount; ++i)
         {
-            auto* dock = new AzQtComponents::StyledDockWidget(QStringLiteral("Perspective %1").arg(i + 1), m_dockHost);
+            auto* dock = new AzQtComponents::StyledDockWidget(QStringLiteral("Perspective %1").arg(i + 1), this);
             dock->setObjectName(QStringLiteral("HammerViewportDock%1").arg(i + 1));
             dock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetClosable);
             dock->hide();
@@ -69,7 +73,7 @@ namespace Hammer
 
         AZ_Assert(m_viewports.size() == MaxViewportCount, "HammerViewportLayoutWidget failed to create all %d viewports", MaxViewportCount);
 
-        m_dockAnchor = new AzQtComponents::StyledDockWidget(QStringLiteral("Viewport Dock Area"), m_dockHost);
+        m_dockAnchor = new AzQtComponents::StyledDockWidget(QStringLiteral("Viewport Dock Area"), this);
         m_dockAnchor->setObjectName(QStringLiteral("HammerViewportDockAnchor"));
         m_dockAnchor->setFeatures(QDockWidget::NoDockWidgetFeatures);
         m_dockAnchor->setTitleBarWidget(new QWidget(m_dockAnchor));
@@ -95,7 +99,7 @@ namespace Hammer
                         AzQtComponents::DockTabWidget::IsTabbed(dock);
                     unused = (!unused && !inUse) ? viewport : unused;
                 }
-                (unused && adoptedDock) &&
+                (unused && adoptedDock && m_fancyDocking) &&
                     (m_fancyDocking->tabifyDockWidget(
                          adoptedDock, qobject_cast<QDockWidget*>(unused->parentWidget()), m_dockHost),
                      unused->show(), true);
@@ -104,6 +108,7 @@ namespace Hammer
         auto* firstDock = qobject_cast<QDockWidget*>(m_viewports[0]->parentWidget());
         AZ_Assert(firstDock, "The startup viewport is not hosted in a QDockWidget");
         m_dockHost->addDockWidget(Qt::LeftDockWidgetArea, firstDock);
+        m_dockHost->resizeDocks({ firstDock }, { m_dockHost->width() * 2 / 3 }, Qt::Horizontal);
         firstDock->show();
         m_viewports[0]->SetRenderTickEnabled(true);
         ActivateViewport(m_viewports[0]);
@@ -127,6 +132,17 @@ namespace Hammer
         AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler::BusDisconnect();
         HammerViewportRequestBus::Handler::BusDisconnect();
         HammerEditorActiveViewportRequestBus::Handler::BusDisconnect();
+
+        for (HammerWidget* viewport : m_viewports)
+        {
+            QWidget* dock = qobject_cast<QDockWidget*>(viewport->parentWidget());
+            delete (dock ? dock : static_cast<QWidget*>(viewport));
+        }
+        m_viewports.clear();
+
+        delete m_dockAnchor;
+        m_dockAnchor = nullptr;
+        delete m_addViewportButton;
     }
 
     void HammerViewportLayoutWidget::SetActiveViewportId(AzFramework::ViewportId viewportId)
@@ -270,29 +286,41 @@ namespace Hammer
         auto* adoptedDock = qobject_cast<QDockWidget*>(m_adoptedViewport->parentWidget());
         AZ_Assert(adoptedDock, "The adopted viewport is not hosted in a QDockWidget");
 
-        bool anyViewportDocked = false;
         for (HammerWidget* viewport : m_viewports)
         {
-            auto* dock = qobject_cast<QDockWidget*>(viewport->parentWidget());
             viewport->SetRenderTickEnabled(viewport->isVisible() || viewport == m_adoptedViewport);
-            anyViewportDocked = anyViewportDocked ||
-                (dock && dock->isVisible() && !dock->isFloating() && dock->window() == m_dockHost->window());
+        }
+
+        bool anyDockDocked = false;
+        const QList<QDockWidget*> hostDocks = m_dockHost->findChildren<QDockWidget*>(QString(), Qt::FindDirectChildrenOnly);
+        for (QDockWidget* hostDock : hostDocks)
+        {
+            anyDockDocked = anyDockDocked ||
+                (hostDock != m_dockAnchor && hostDock->isVisible() && !hostDock->isFloating() &&
+                 hostDock->window() == m_dockHost->window());
         }
 
         (adoptedDock && !adoptedDock->isVisible() && !AzQtComponents::DockTabWidget::IsTabbed(adoptedDock) &&
          adoptedDock->window() == m_dockHost->window()) &&
-            (m_dockHost->addDockWidget(Qt::LeftDockWidgetArea, adoptedDock), adoptedDock->show(), anyViewportDocked = true, true);
+            (m_dockHost->addDockWidget(Qt::LeftDockWidgetArea, adoptedDock), adoptedDock->show(), anyDockDocked = true, true);
 
         const bool adoptedDockedInHost = adoptedDock && adoptedDock->isVisible() && !adoptedDock->isFloating() &&
             adoptedDock->window() == m_dockHost->window();
         auto* adoptedTabWidget = AzQtComponents::DockTabWidget::ParentTabWidget(adoptedDock);
-        (adoptedDockedInHost && !adoptedTabWidget) && (m_fancyDocking->createTabWidget(m_dockHost, adoptedDock), true);
+        (m_fancyDocking && adoptedDockedInHost && !adoptedTabWidget) &&
+            (m_fancyDocking->createTabWidget(m_dockHost, adoptedDock), true);
         adoptedTabWidget = AzQtComponents::DockTabWidget::ParentTabWidget(adoptedDock);
 
         !m_addViewportButton &&
             (m_addViewportButton = new QToolButton(m_dockHost),
              m_addViewportButton->setObjectName(QStringLiteral("HammerAddViewportButton")),
              m_addViewportButton->setDefaultAction(m_addViewportAction), m_addViewportButton->setAutoRaise(true),
+             m_addViewportButton->setStyleSheet(
+                 []
+                 {
+                     QFile styleSheetFile(QStringLiteral(":/Hammer/Hammer.qss"));
+                     return styleSheetFile.open(QFile::ReadOnly) ? QString::fromUtf8(styleSheetFile.readAll()) : QString();
+                 }()),
              m_addViewportButton->adjustSize(), m_addViewportButton->hide(), true);
 
         QTabBar* adoptedTabBar = adoptedTabWidget ? adoptedTabWidget->tabBar() : nullptr;
@@ -322,12 +350,12 @@ namespace Hammer
             ? AzQtComponents::DockTabWidget::ParentTabWidget(m_dockAnchor)
             : nullptr;
         const bool anchorPresent = m_dockAnchor->isVisible() || anchorTabWidget != nullptr;
-        (!anyViewportDocked && !anchorPresent) &&
+        (!anyDockDocked && !anchorPresent) &&
             (m_dockAnchor->setTitleBarWidget(new QWidget(m_dockAnchor)),
              m_dockHost->addDockWidget(Qt::LeftDockWidgetArea, m_dockAnchor), m_dockAnchor->show(), true);
-        (anyViewportDocked && anchorPresent) &&
+        (anyDockDocked && anchorPresent) &&
             (anchorTabWidget && (anchorTabWidget->removeTab(m_dockAnchor), true),
-             m_dockHost->removeDockWidget(m_dockAnchor), true);
+             m_dockHost->removeDockWidget(m_dockAnchor), m_dockAnchor->setParent(this), m_dockAnchor->hide(), true);
 
         const bool shouldChase = m_viewportUiOverlayWindow && m_activeViewport && m_activeViewport != m_adoptedViewport;
 
@@ -335,7 +363,10 @@ namespace Hammer
             (m_viewportUiOverlayWindow->setGeometry(QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())),
              true);
 
-        (m_viewportUiOverlayWindow && m_viewportUiOverlayWindow->isVisible()) && (m_viewportUiOverlayWindow->raise(), true);
+        QWidget* activeViewportWindow = m_activeViewport ? m_activeViewport->window() : nullptr;
+        (m_viewportUiOverlayWindow && m_viewportUiOverlayWindow->isVisible() && activeViewportWindow &&
+         activeViewportWindow->isActiveWindow()) &&
+            (m_viewportUiOverlayWindow->raise(), true);
 
         auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
         AZ::RPI::ViewportContextPtr defaultContext;
@@ -362,7 +393,7 @@ namespace Hammer
         isOverlayMoveOrResize &&
             (static_cast<QWidget*>(watched)->setGeometry(
                  QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())),
-             static_cast<QWidget*>(watched)->raise(), true);
+             true);
 
         return QWidget::eventFilter(watched, event);
     }

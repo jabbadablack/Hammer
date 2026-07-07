@@ -11,8 +11,6 @@
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
 #include <AzToolsFramework/ActionManager/ActionManagerRegistrationNotificationBus.h>
 
-class QAction;
-class QDockWidget;
 class QToolButton;
 class QWidget;
 
@@ -38,22 +36,19 @@ namespace Hammer
         void Activate() override;
         void Deactivate() override;
 
-        void NotifyRegisterViews() override;
+        void NotifyCentralWidgetInitialized() override;
         void NotifyEditorInitialized() override;
 
         void OnWidgetActionRegistrationHook() override;
         void OnToolBarBindingHook() override;
 
-        void RegisterViewportPane();
         void EmbedViewportInCenter();
         QWidget* CreateViewModeToolBarButton();
         void ConnectViewModeSwitcherSync();
         void PrepareEditorChrome();
-        QWidget* EmbedViewportPaneAsCentralWidget();
-        void RestoreViewportPaneToDockWidget(QWidget* content);
 
         QPointer<HammerViewportLayoutWidget> m_viewportLayoutWidget;
         AZStd::vector<QPointer<QToolButton>> m_viewModeButtons;
-        QPointer<QDockWidget> m_paneDockWidget;
+        bool m_seedHammerLayout = false;
     };
 } // namespace Hammer
