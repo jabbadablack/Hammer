@@ -1,6 +1,6 @@
 #include "HammerEditorSystemComponent.h"
 #include "HammerViewModeFeatureProcessor.h"
-#include "HammerViewportLayoutWidget.h"
+#include "HammerViewportWidget.h"
 
 #include <Atom/RPI.Public/FeatureProcessorFactory.h>
 #include <AzCore/IO/FileIO.h>
@@ -22,7 +22,6 @@
 #include <QAction>
 #include <QApplication>
 #include <QDataStream>
-#include <QDockWidget>
 #include <QFile>
 #include <QIcon>
 #include <QIODevice>
@@ -94,8 +93,6 @@ namespace Hammer
 
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
         AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusConnect();
-
-        PrepareEditorChrome();
     }
 
     void HammerEditorSystemComponent::Deactivate()
@@ -104,7 +101,7 @@ namespace Hammer
 
         m_viewModeButtons.clear();
 
-        m_viewportLayoutWidget && (delete m_viewportLayoutWidget.data(), true);
+        m_viewportWidget && (delete m_viewportWidget.data(), true);
 
         AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusDisconnect();
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
@@ -295,10 +292,10 @@ namespace Hammer
         for (QPointer<QToolButton>& button : m_viewModeButtons)
         {
             const bool canConnect =
-                m_viewportLayoutWidget && button && !button->property("hammerViewModeSynced").toBool();
+                m_viewportWidget && button && !button->property("hammerViewModeSynced").toBool();
             canConnect &&
                 (QObject::connect(
-                     m_viewportLayoutWidget, &HammerViewportLayoutWidget::ActiveViewModesChanged, button,
+                     m_viewportWidget, &HammerViewportWidget::ActiveViewModesChanged, button,
                      [button = button.data()](bool normal, bool wireframe, bool overdraw)
                      {
                          const QList<QAction*> actions = button->menu()->actions();
@@ -312,7 +309,7 @@ namespace Hammer
 
     void HammerEditorSystemComponent::EmbedViewportInCenter()
     {
-        AZ_Assert(!m_viewportLayoutWidget, "EmbedViewportInCenter called while a viewport layout widget already exists");
+        AZ_Assert(!m_viewportWidget, "EmbedViewportInCenter called while a viewport layout widget already exists");
 
         auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
         AZ_Error("HammerEditorSystemComponent", viewportContextManager, "Could not find AZ::RPI::ViewportContextRequestsInterface");
@@ -347,26 +344,12 @@ namespace Hammer
         }
         AZ_Error("HammerEditorSystemComponent", viewPaneHost, "Could not find the QMainWindow hosting the main viewport");
 
-        viewPaneHost && (m_viewportLayoutWidget = new HammerViewportLayoutWidget(viewPaneHost), true);
-        (m_viewportLayoutWidget && oldViewport) && (m_viewportLayoutWidget->AdoptRealPerspectiveViewport(*oldViewport), true);
+        viewPaneHost && (m_viewportWidget = new HammerViewportWidget(viewPaneHost), true);
+        (m_viewportWidget && oldViewport) && (m_viewportWidget->AdoptRealPerspectiveViewport(*oldViewport), true);
 
         AZ_Warning(
             "HammerEditorSystemComponent", viewPaneHost && oldViewport,
             "Could not fully embed the Hammer viewports into the editor's dock space");
-    }
-
-    void HammerEditorSystemComponent::PrepareEditorChrome()
-    {
-        AZ_Assert(!m_viewportLayoutWidget, "PrepareEditorChrome should run once, before the viewports have been embedded");
-
-        QSettings settings("O3DE", "O3DE");
-        constexpr const char* MigratedStaleLayoutKey = "HammerGem/migratedStaleLayoutOnce";
-        const bool alreadyMigrated = settings.value(MigratedStaleLayoutKey, false).toBool();
-        (!alreadyMigrated) &&
-            (settings.remove("ViewportLayout"), settings.remove("Editor/fancyWindowLayouts/last"),
-             settings.setValue(MigratedStaleLayoutKey, true), true);
-
-        settings.remove("Editor/fancyWindowLayouts/hammer_last");
     }
 
 } // namespace Hammer

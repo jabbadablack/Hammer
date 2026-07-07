@@ -24,7 +24,7 @@ namespace Hammer
 {
     class HammerWidget;
 
-    class HammerViewportLayoutWidget
+    class HammerViewportWidget
         : public QWidget
         , private AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler
         , private Camera::EditorCameraRequestBus::Handler
@@ -35,8 +35,8 @@ namespace Hammer
     public:
         static constexpr int MaxViewportCount = 4;
 
-        explicit HammerViewportLayoutWidget(QWidget* parent = nullptr);
-        ~HammerViewportLayoutWidget() override;
+        explicit HammerViewportWidget(QWidget* parent = nullptr);
+        ~HammerViewportWidget() override;
 
         void AdoptRealPerspectiveViewport(QWidget& realViewport);
         void SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw) override;

@@ -16,7 +16,7 @@ class QWidget;
 
 namespace Hammer
 {
-    class HammerViewportLayoutWidget;
+    class HammerViewportWidget;
 
     class HammerEditorSystemComponent
         : public HammerSystemComponent
@@ -45,9 +45,8 @@ namespace Hammer
         void EmbedViewportInCenter();
         QWidget* CreateViewModeToolBarButton();
         void ConnectViewModeSwitcherSync();
-        void PrepareEditorChrome();
 
-        QPointer<HammerViewportLayoutWidget> m_viewportLayoutWidget;
+        QPointer<HammerViewportWidget> m_viewportWidget;
         AZStd::vector<QPointer<QToolButton>> m_viewModeButtons;
         bool m_seedHammerLayout = false;
     };
