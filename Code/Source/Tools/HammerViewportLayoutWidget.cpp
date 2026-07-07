@@ -55,7 +55,7 @@ namespace Hammer
 
         for (int i = 0; i < MaxViewportCount; ++i)
         {
-            auto* dock = new AzQtComponents::StyledDockWidget(QStringLiteral("Perspective %1").arg(i + 1), m_dockHost);
+            auto* dock = new AzQtComponents::StyledDockWidget(QStringLiteral("Perspective %1").arg(i + 1), this);
             dock->setObjectName(QStringLiteral("HammerViewportDock%1").arg(i + 1));
             dock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetClosable);
             dock->hide();
@@ -73,7 +73,7 @@ namespace Hammer
 
         AZ_Assert(m_viewports.size() == MaxViewportCount, "HammerViewportLayoutWidget failed to create all %d viewports", MaxViewportCount);
 
-        m_dockAnchor = new AzQtComponents::StyledDockWidget(QStringLiteral("Viewport Dock Area"), m_dockHost);
+        m_dockAnchor = new AzQtComponents::StyledDockWidget(QStringLiteral("Viewport Dock Area"), this);
         m_dockAnchor->setObjectName(QStringLiteral("HammerViewportDockAnchor"));
         m_dockAnchor->setFeatures(QDockWidget::NoDockWidgetFeatures);
         m_dockAnchor->setTitleBarWidget(new QWidget(m_dockAnchor));
@@ -355,7 +355,7 @@ namespace Hammer
              m_dockHost->addDockWidget(Qt::LeftDockWidgetArea, m_dockAnchor), m_dockAnchor->show(), true);
         (anyDockDocked && anchorPresent) &&
             (anchorTabWidget && (anchorTabWidget->removeTab(m_dockAnchor), true),
-             m_dockHost->removeDockWidget(m_dockAnchor), true);
+             m_dockHost->removeDockWidget(m_dockAnchor), m_dockAnchor->setParent(this), m_dockAnchor->hide(), true);
 
         const bool shouldChase = m_viewportUiOverlayWindow && m_activeViewport && m_activeViewport != m_adoptedViewport;
 

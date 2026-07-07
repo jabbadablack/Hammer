@@ -36,6 +36,7 @@ namespace Hammer
         void Activate() override;
         void Deactivate() override;
 
+        void NotifyCentralWidgetInitialized() override;
         void NotifyEditorInitialized() override;
 
         void OnWidgetActionRegistrationHook() override;
@@ -48,5 +49,6 @@ namespace Hammer
 
         QPointer<HammerViewportLayoutWidget> m_viewportLayoutWidget;
         AZStd::vector<QPointer<QToolButton>> m_viewModeButtons;
+        bool m_seedHammerLayout = false;
     };
 } // namespace Hammer

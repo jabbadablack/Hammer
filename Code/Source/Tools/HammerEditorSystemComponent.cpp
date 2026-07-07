@@ -3,6 +3,7 @@
 #include "HammerViewportLayoutWidget.h"
 
 #include <Atom/RPI.Public/FeatureProcessorFactory.h>
+#include <AzCore/IO/FileIO.h>
 #include <AzCore/Interface/Interface.h>
 #include <AzCore/RTTI/BehaviorContext.h>
 #include <AzCore/Serialization/SerializeContext.h>
@@ -13,15 +14,22 @@
 
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
 #include <AzToolsFramework/ActionManager/Action/ActionManagerInterface.h>
+#include <AzToolsFramework/ActionManager/Action/ActionManagerInternalInterface.h>
 #include <AzToolsFramework/ActionManager/ToolBar/ToolBarManagerInterface.h>
 #include <AzToolsFramework/Editor/ActionManagerIdentifiers/EditorToolBarIdentifiers.h>
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
 
+#include <QAction>
+#include <QApplication>
+#include <QDataStream>
 #include <QDockWidget>
+#include <QFile>
 #include <QIcon>
+#include <QIODevice>
 #include <QMainWindow>
 #include <QMenu>
 #include <QSettings>
+#include <QTimer>
 #include <QToolButton>
 
 #include <Hammer/HammerTypeIds.h>
@@ -107,10 +115,106 @@ namespace Hammer
         HammerSystemComponent::Deactivate();
     }
 
+    void HammerEditorSystemComponent::NotifyCentralWidgetInitialized()
+    {
+        auto* fileIo = AZ::IO::FileIOBase::GetInstance();
+        AZ_Assert(fileIo, "NotifyCentralWidgetInitialized fired before FileIOBase is available");
+        char bundledLayoutPath[AZ_MAX_PATH_LEN] = { 0 };
+        const bool bundledPathResolved =
+            fileIo && fileIo->ResolvePath("@gemroot:Hammer@/Editor/hammer_layout.ini", bundledLayoutPath, AZ_MAX_PATH_LEN);
+        AZ_Warning(
+            "HammerEditorSystemComponent", bundledPathResolved,
+            "Could not resolve @gemroot:Hammer@; the bundled Hammer layout will not be imported");
+
+        QSettings settings("O3DE", "O3DE");
+        QVariant bundledLayout;
+        (bundledPathResolved && !settings.contains("Editor/fancyWindowLayouts/hammer_layout")) &&
+            (bundledLayout = QSettings(QString::fromUtf8(bundledLayoutPath), QSettings::IniFormat).value("hammer_layout"), true);
+        bundledLayout.isValid() &&
+            (settings.setValue("Editor/fancyWindowLayouts/hammer_layout", bundledLayout), settings.sync(), true);
+
+        m_seedHammerLayout = !settings.contains("Editor/fancyWindowLayouts/last") &&
+            settings.contains("Editor/fancyWindowLayouts/hammer_layout");
+
+        EmbedViewportInCenter();
+    }
+
     void HammerEditorSystemComponent::NotifyEditorInitialized()
     {
-        EmbedViewportInCenter();
         ConnectViewModeSwitcherSync();
+
+        auto* actionManagerInterface = AZ::Interface<AzToolsFramework::ActionManagerInterface>::Get();
+        auto* actionManagerInternalInterface = AZ::Interface<AzToolsFramework::ActionManagerInternalInterface>::Get();
+        AZ_Error(
+            "HammerEditorSystemComponent", actionManagerInterface && actionManagerInternalInterface,
+            "Could not find the ActionManager interfaces; the Hammer startup layout will not be applied");
+
+        const bool hammerLayoutSaved = QSettings("O3DE", "O3DE").contains("Editor/fancyWindowLayouts/hammer_layout");
+        AZ_Warning(
+            "HammerEditorSystemComponent", hammerLayoutSaved,
+            "No saved 'hammer_layout' found; the editor will keep its stock default layout");
+
+        QAction* restoreDefaultAction =
+            actionManagerInternalInterface ? actionManagerInternalInterface->GetAction("o3de.action.layout.restoreDefault") : nullptr;
+        AZ_Warning(
+            "HammerEditorSystemComponent", restoreDefaultAction || !hammerLayoutSaved,
+            "Could not find the Restore Default Layout action to redirect to 'hammer_layout'");
+
+        (restoreDefaultAction && hammerLayoutSaved && actionManagerInterface) &&
+            (QObject::disconnect(restoreDefaultAction, &QAction::triggered, nullptr, nullptr),
+             QObject::connect(
+                 restoreDefaultAction, &QAction::triggered, restoreDefaultAction,
+                 [actionManagerInterface]
+                 {
+                     actionManagerInterface->TriggerAction("o3de.action.layout[hammer_layout].load");
+                 }),
+             true);
+
+        (m_seedHammerLayout && hammerLayoutSaved && actionManagerInterface) &&
+            (QTimer::singleShot(
+                 0,
+                 [actionManagerInterface]
+                 {
+                     actionManagerInterface->TriggerAction("o3de.action.layout[hammer_layout].load");
+                 }),
+             true);
+
+        const auto exportHammerLayout = []
+        {
+            auto* fileIo = AZ::IO::FileIOBase::GetInstance();
+            char bundledLayoutPath[AZ_MAX_PATH_LEN] = { 0 };
+            const bool bundledPathResolved =
+                fileIo && fileIo->ResolvePath("@gemroot:Hammer@/Editor/hammer_layout.ini", bundledLayoutPath, AZ_MAX_PATH_LEN);
+            AZ_Warning(
+                "HammerEditorSystemComponent", bundledPathResolved,
+                "Could not resolve @gemroot:Hammer@; the Hammer layout will not be exported with the gem");
+
+            const QVariant userLayout = QSettings("O3DE", "O3DE").value("Editor/fancyWindowLayouts/hammer_layout");
+            const auto serializeVariant = [](const QVariant& value)
+            {
+                QByteArray bytes;
+                QDataStream stream(&bytes, QIODevice::WriteOnly);
+                stream << value;
+                return bytes;
+            };
+            const bool layoutChanged = bundledPathResolved && userLayout.isValid() &&
+                serializeVariant(QSettings(QString::fromUtf8(bundledLayoutPath), QSettings::IniFormat).value("hammer_layout")) !=
+                    serializeVariant(userLayout);
+            layoutChanged &&
+                (fileIo->CreatePath("@gemroot:Hammer@/Editor"),
+                 QSettings(QString::fromUtf8(bundledLayoutPath), QSettings::IniFormat).setValue("hammer_layout", userLayout),
+                 true);
+            AZ_Warning(
+                "HammerEditorSystemComponent", !layoutChanged || QFile::exists(QString::fromUtf8(bundledLayoutPath)),
+                "Failed to write the bundled Hammer layout file");
+        };
+        exportHammerLayout();
+
+        QAction* saveHammerLayoutAction = actionManagerInternalInterface
+            ? actionManagerInternalInterface->GetAction("o3de.action.layout[hammer_layout].save")
+            : nullptr;
+        saveHammerLayoutAction &&
+            (QObject::connect(saveHammerLayoutAction, &QAction::triggered, saveHammerLayoutAction, exportHammerLayout), true);
     }
 
     void HammerEditorSystemComponent::OnWidgetActionRegistrationHook()
@@ -221,6 +325,14 @@ namespace Hammer
 
         QWidget* mainWindowWidget = nullptr;
         AzToolsFramework::EditorRequestBus::BroadcastResult(mainWindowWidget, &AzToolsFramework::EditorRequests::GetMainWindow);
+        const QWidgetList topLevelWidgets = QApplication::topLevelWidgets();
+        const auto mainWindowIt = AZStd::find_if(
+            topLevelWidgets.begin(), topLevelWidgets.end(),
+            [](QWidget* widget)
+            {
+                return qstrcmp(widget->metaObject()->className(), "MainWindow") == 0;
+            });
+        mainWindowWidget = (!mainWindowWidget && mainWindowIt != topLevelWidgets.end()) ? *mainWindowIt : mainWindowWidget;
         AZ_Error("HammerEditorSystemComponent", mainWindowWidget, "Could not get the Editor main window");
 
         QWidget* oldViewport = nullptr;
@@ -253,6 +365,8 @@ namespace Hammer
         (!alreadyMigrated) &&
             (settings.remove("ViewportLayout"), settings.remove("Editor/fancyWindowLayouts/last"),
              settings.setValue(MigratedStaleLayoutKey, true), true);
+
+        settings.remove("Editor/fancyWindowLayouts/hammer_last");
     }
 
 } // namespace Hammer
