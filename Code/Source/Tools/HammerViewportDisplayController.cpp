@@ -1,6 +1,7 @@
 #include "HammerViewportDisplayController.h"
 
 #include <AzFramework/Entity/EntityDebugDisplayBus.h>
+#include <AzFramework/Input/Devices/Mouse/InputDeviceMouse.h>
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
 #include <Editor/EditorViewportSettings.h>
 #include <Hammer/HammerEditorViewportBus.h>
@@ -8,6 +9,44 @@
 namespace Hammer
 {
     namespace ViewInt = AzToolsFramework::ViewportInteraction;
+
+    HammerSelectionCacheControllerInstance::HammerSelectionCacheControllerInstance(
+        AzFramework::ViewportId viewport, HammerSelectionCacheController* controller)
+        : AzFramework::MultiViewportControllerInstanceInterface<HammerSelectionCacheController>(viewport, controller)
+    {
+        AZ_Assert(controller, "HammerSelectionCacheControllerInstance constructed with a null controller");
+        AZ_Assert(
+            viewport != AzFramework::InvalidViewportId,
+            "HammerSelectionCacheControllerInstance constructed with an invalid ViewportId");
+    }
+
+    bool HammerSelectionCacheControllerInstance::HandleInputChannelEvent(const AzFramework::ViewportControllerInputEvent& event)
+    {
+        const AzFramework::InputChannelId channelId = event.m_inputChannel.GetInputChannelId();
+        bool mouseButton = false;
+        for (const AzFramework::InputChannelId& buttonId : AzFramework::InputDeviceMouse::Button::All)
+        {
+            mouseButton = mouseButton || channelId == buttonId;
+        }
+
+        const bool prime = mouseButton && event.m_priority == AzFramework::ViewportControllerPriority::Highest;
+        AzFramework::DebugDisplayRequestBus::BusPtr debugDisplayBus;
+        prime && (AzFramework::DebugDisplayRequestBus::Bind(debugDisplayBus, GetViewportId()), true);
+        AzFramework::DebugDisplayRequests* debugDisplay =
+            prime ? AzFramework::DebugDisplayRequestBus::FindFirstHandler(debugDisplayBus) : nullptr;
+
+        AZ_Warning(
+            "HammerViewportDisplayController", !prime || debugDisplay,
+            "Viewport %d has no debug display; its selection cache cannot be primed before picking", GetViewportId());
+
+        debugDisplay &&
+            (AzFramework::ViewportDebugDisplayEventBus::Event(
+                 AzToolsFramework::GetEntityContextId(), &AzFramework::ViewportDebugDisplayEvents::DisplayViewport,
+                 AzFramework::ViewportInfo{ GetViewportId() }, *debugDisplay),
+             true);
+
+        return false;
+    }
 
     HammerViewportDisplayControllerInstance::HammerViewportDisplayControllerInstance(
         AzFramework::ViewportId viewport, HammerViewportDisplayController* controller)

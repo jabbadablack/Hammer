@@ -337,7 +337,9 @@ namespace Hammer
 
         m_viewportWidget = FindRealRenderViewport(realViewport);
         AZ_Error("HammerWidget", m_viewportWidget, "Could not resolve the adopted real viewport's inner RenderViewportWidget");
-        m_viewportWidget && (m_viewportWidget->installEventFilter(this), true);
+        m_viewportWidget &&
+            (m_viewportWidget->installEventFilter(this),
+             m_viewportWidget->GetControllerList()->Add(AZStd::make_shared<HammerSelectionCacheController>()), true);
 
         SyncAdoptedGeometry();
 
@@ -502,6 +504,7 @@ namespace Hammer
 
         SetupCamera();
         AZ_Assert(m_viewportWidget->GetControllerList(), "The initialized viewport has no controller list");
+        m_viewportWidget->GetControllerList()->Add(AZStd::make_shared<HammerSelectionCacheController>());
         m_viewportWidget->GetControllerList()->Add(AZStd::make_shared<SandboxEditor::ViewportManipulatorController>());
         m_viewportWidget->GetControllerList()->Add(AZStd::make_shared<HammerViewportDisplayController>());
 

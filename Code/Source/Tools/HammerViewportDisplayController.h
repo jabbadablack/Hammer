@@ -7,6 +7,23 @@
 
 namespace Hammer
 {
+    class HammerSelectionCacheControllerInstance;
+
+    class HammerSelectionCacheController final
+        : public AzFramework::MultiViewportController<
+              HammerSelectionCacheControllerInstance, AzFramework::ViewportControllerPriority::DispatchToAllPriorities>
+    {
+    };
+
+    class HammerSelectionCacheControllerInstance final
+        : public AzFramework::MultiViewportControllerInstanceInterface<HammerSelectionCacheController>
+    {
+    public:
+        HammerSelectionCacheControllerInstance(AzFramework::ViewportId viewport, HammerSelectionCacheController* controller);
+
+        bool HandleInputChannelEvent(const AzFramework::ViewportControllerInputEvent& event) override;
+    };
+
     class HammerViewportDisplayControllerInstance;
 
     class HammerViewportDisplayController final

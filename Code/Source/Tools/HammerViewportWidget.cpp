@@ -10,23 +10,27 @@
 #include <AzQtComponents/Components/DockTabWidget.h>
 #include <AzQtComponents/Components/FancyDocking.h>
 #include <AzQtComponents/Components/StyledDockWidget.h>
+#include <AzQtComponents/Components/Widgets/ToolBar.h>
 #include <AzToolsFramework/ActionManager/Action/ActionManagerInternalInterface.h>
 #include <AzToolsFramework/ActionManager/Menu/MenuManagerInternalInterface.h>
 #include <AzToolsFramework/Editor/ActionManagerIdentifiers/EditorMenuIdentifiers.h>
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
 #include <Editor/EditorViewportSettings.h>
 
+#include <QAbstractButton>
 #include <QAction>
 #include <QEvent>
 #include <QFile>
 #include <QIcon>
 #include <QMainWindow>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QStyle>
 #include <QTabBar>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
+#include <QWidgetAction>
 
 namespace Hammer
 {
@@ -50,12 +54,29 @@ namespace Hammer
         toolBar->setStyleSheet(QStringLiteral("QToolBar { background: transparent; border: none; padding: 0px; }"));
         toolBar->hide();
 
+        QAction* focusUpAction = actionManagerInternal->GetAction("o3de.action.prefabs.focusUpOneLevel");
+        AZ_Error(
+            "HammerViewportWidget", focusUpAction,
+            "Could not find the prefab focus-up action for the Hammer viewport toolbar");
+        focusUpAction && (toolBar->addAction(focusUpAction), true);
+
+        QWidget* focusPath = actionManagerInternal->GenerateWidgetFromWidgetAction("o3de.widgetAction.prefab.focusPath");
+        AZ_Error(
+            "HammerViewportWidget", focusPath,
+            "Could not generate the prefab focus path widget for the Hammer viewport toolbar");
+        focusPath &&
+            (toolBar->addWidget(focusPath)->setObjectName(QStringLiteral("o3de.widgetAction.prefab.focusPath")), true);
+
+        toolBar->addSeparator();
+
         QWidget* prefabEditMode =
             actionManagerInternal->GenerateWidgetFromWidgetAction("o3de.widgetAction.prefab.editVisualMode");
         AZ_Error(
             "HammerViewportWidget", prefabEditMode,
             "Could not generate the prefab edit mode widget for the Hammer viewport toolbar");
-        prefabEditMode && (toolBar->addWidget(prefabEditMode), true);
+        prefabEditMode &&
+            (toolBar->addWidget(prefabEditMode)->setObjectName(QStringLiteral("o3de.widgetAction.prefab.editVisualMode")),
+             true);
 
         toolBar->addSeparator();
 
@@ -65,7 +86,7 @@ namespace Hammer
         viewModeButton->setPopupMode(QToolButton::InstantPopup);
         viewModeButton->setAutoRaise(true);
 
-        QMenu* viewModeMenu = new QMenu(viewModeButton);
+        QMenu* viewModeMenu = new QMenu(QObject::tr("View Mode"), viewModeButton);
         QAction* normalAction = viewModeMenu->addAction(QObject::tr("Normal"));
         QAction* wireframeAction = viewModeMenu->addAction(QObject::tr("Wireframe"));
         QAction* overdrawAction = viewModeMenu->addAction(QObject::tr("Quad Overdraw"));
@@ -133,6 +154,10 @@ namespace Hammer
                 (button->setPopupMode(QToolButton::MenuButtonPopup), button->setAutoRaise(true), button->setMenu(menu),
                  button->setDefaultAction(action), toolBar->addWidget(button), true);
         }
+
+        QToolButton* expander = AzQtComponents::ToolBar::getToolBarExpansionButton(toolBar);
+        AZ_Assert(expander, "The viewport toolbar has no expansion button to collapse into");
+        expander && (expander->installEventFilter(this), true);
 
         return toolBar;
     }
@@ -356,7 +381,7 @@ namespace Hammer
         placeholder->SetRenderTickEnabled(false);
         placeholder->hide();
 
-        dock->setWindowTitle(QObject::tr("Perspective") + QStringLiteral("   "));
+        dock->setWindowTitle(QObject::tr("Perspective"));
         dock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
         dock->setWidget(adopted);
         adopted->show();
@@ -484,12 +509,38 @@ namespace Hammer
             const bool soloWithTitle = titleBar && dock->isVisible();
             QWidget* host = currentInTab ? static_cast<QWidget*>(tabWidget) : (soloWithTitle ? static_cast<QWidget*>(dock) : nullptr);
 
+            QTabBar* titleTabBar = titleBar ? titleBar->findChild<QTabBar*>() : nullptr;
+            titleTabBar = (titleTabBar && titleTabBar->isVisible() && titleTabBar->count() > 0) ? titleTabBar : nullptr;
+            const int occupiedLeft = currentInTab
+                ? tabBar->mapTo(tabWidget, QPoint(tabBar->tabRect(tabBar->count() - 1).right(), 0)).x() + 4 +
+                    ((m_addViewportButton && m_addViewportButton->parentWidget() == tabWidget)
+                         ? m_addViewportButton->width() + 8
+                         : 0)
+                : (soloWithTitle
+                       ? (titleTabBar
+                              ? titleTabBar->mapTo(dock, QPoint(titleTabBar->tabRect(titleTabBar->count() - 1).right(), 0)).x() + 4
+                              : titleBar->fontMetrics().horizontalAdvance(dock->windowTitle()) + 24)
+                       : 0);
+
+            int titleButtonsLeft = host ? host->width() : 0;
+            const QList<QAbstractButton*> titleButtons =
+                titleBar ? titleBar->findChildren<QAbstractButton*>() : QList<QAbstractButton*>();
+            for (QAbstractButton* button : titleButtons)
+            {
+                const int buttonLeft = button->mapTo(dock, QPoint(0, 0)).x();
+                titleButtonsLeft =
+                    (button->isVisible() && buttonLeft < titleButtonsLeft) ? buttonLeft : titleButtonsLeft;
+            }
+            const int clearance = currentInTab ? 4 : (soloWithTitle ? host->width() - titleButtonsLeft + 4 : 0);
+
             (toolBar && !host) && (toolBar->hide(), true);
             (toolBar && host && toolBar->parentWidget() != host) && (toolBar->setParent(host), true);
             (toolBar && host) &&
-                (toolBar->resize(toolBar->sizeHint()),
+                (toolBar->resize(
+                     AZStd::clamp(host->width() - occupiedLeft - clearance, 28, toolBar->sizeHint().width()),
+                     toolBar->sizeHint().height()),
                  toolBar->move(
-                     host->width() - toolBar->width() - (currentInTab ? 4 : 56),
+                     host->width() - toolBar->width() - clearance,
                      currentInTab
                          ? tabBar->mapTo(tabWidget, QPoint(0, (tabBar->height() - toolBar->height()) / 2)).y()
                          : titleBar->geometry().y() + (titleBar->height() - toolBar->height()) / 2),
@@ -537,6 +588,44 @@ namespace Hammer
     bool HammerViewportWidget::eventFilter(QObject* watched, QEvent* event)
     {
         AZ_Assert(watched && event, "eventFilter invoked with a null object or event");
+        auto* expander = qobject_cast<QToolButton*>(watched);
+        auto* expanderToolBar = expander ? qobject_cast<QToolBar*>(expander->parentWidget()) : nullptr;
+        const bool isToolBarExpanderClick = expanderToolBar &&
+            expanderToolBar->objectName() == QLatin1String("HammerViewportToolBar") &&
+            (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease ||
+             event->type() == QEvent::MouseButtonDblClick);
+        if (isToolBarExpanderClick)
+        {
+            auto* actionManagerInternal = AZ::Interface<AzToolsFramework::ActionManagerInternalInterface>::Get();
+            AZ_Assert(actionManagerInternal, "Toolbar overflow menu requested without the ActionManager");
+            if (event->type() != QEvent::MouseButtonPress || !actionManagerInternal)
+            {
+                return true;
+            }
+
+            QMenu menu(expander);
+            for (QAction* action : expanderToolBar->actions())
+            {
+                QWidget* itemWidget = expanderToolBar->widgetForAction(action);
+                if (!itemWidget || itemWidget->isVisible())
+                {
+                    continue;
+                }
+                auto* widgetAction = qobject_cast<QWidgetAction*>(action);
+                auto* menuButton = widgetAction ? qobject_cast<QToolButton*>(widgetAction->defaultWidget()) : nullptr;
+                QWidget* generated = (widgetAction && !menuButton)
+                    ? actionManagerInternal->GenerateWidgetFromWidgetAction(widgetAction->objectName().toUtf8().constData())
+                    : nullptr;
+                QWidgetAction* generatedAction = generated ? new QWidgetAction(&menu) : nullptr;
+                (menuButton && menuButton->menu()) && (menu.addMenu(menuButton->menu()), true);
+                generatedAction && (generatedAction->setDefaultWidget(generated), menu.addAction(generatedAction), true);
+                (!widgetAction && action->isSeparator()) && (menu.addSeparator(), true);
+                (!widgetAction && !action->isSeparator()) && (menu.addAction(action), true);
+            }
+            menu.exec(static_cast<QMouseEvent*>(event)->globalPosition().toPoint());
+            return true;
+        }
+
         const bool isOverlayMoveOrResize = watched == m_viewportUiOverlayWindow && m_activeViewport &&
             m_activeViewport != m_adoptedViewport && (event->type() == QEvent::Move || event->type() == QEvent::Resize);
 
