@@ -80,5 +80,6 @@ namespace Hammer
         bool m_active = false;
         bool m_renderTickEnabled = false;
         AZ::RPI::ViewportContext::PipelineChangedEvent::Handler m_pipelineChangedHandler;
+        AZ::RPI::ViewportContext::SizeChangedEvent::Handler m_viewportSizeChangedHandler;
     };
 }

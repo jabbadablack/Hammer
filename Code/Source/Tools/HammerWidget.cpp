@@ -11,6 +11,7 @@
 #include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AtomToolsFramework/Viewport/ModularViewportCameraController.h>
 #include <AzCore/Interface/Interface.h>
+#include <AzCore/Math/MatrixUtils.h>
 #include <AzCore/Name/Name.h>
 #include <AzCore/std/algorithm.h>
 #include <AzCore/std/containers/array.h>
@@ -517,6 +518,22 @@ namespace Hammer
 
         m_cameraController = BuildViewportCameraController(m_viewportWidget->GetId());
         m_viewportWidget->GetControllerList()->Add(m_cameraController);
+
+        AZ::RPI::ViewportContextPtr viewportContext = m_viewportWidget->GetViewportContext();
+        AZ_Assert(viewportContext, "SetupCamera called before the viewport context was initialized");
+        const auto applyProjection = [this](AzFramework::WindowSize size)
+        {
+            AZ::Matrix4x4 viewToClip;
+            AZ::MakePerspectiveFovMatrixRH(
+                viewToClip, SandboxEditor::CameraDefaultFovRadians(),
+                aznumeric_cast<float>(AZStd::max(size.m_width, 1u)) / aznumeric_cast<float>(AZStd::max(size.m_height, 1u)),
+                SandboxEditor::CameraDefaultNearPlaneDistance(), SandboxEditor::CameraDefaultFarPlaneDistance(), true);
+            m_viewportWidget->GetViewportContext()->SetCameraProjectionMatrix(viewToClip);
+        };
+        m_viewportSizeChangedHandler = AZ::RPI::ViewportContext::SizeChangedEvent::Handler(applyProjection);
+        viewportContext &&
+            (viewportContext->ConnectSizeChangedHandler(m_viewportSizeChangedHandler),
+             applyProjection(viewportContext->GetViewportSize()), true);
     }
 
     void HammerWidget::ApplyRenderTickState()
