@@ -54,6 +54,21 @@ namespace Hammer
         toolBar->setStyleSheet(QStringLiteral("QToolBar { background: transparent; border: none; padding: 0px; }"));
         toolBar->hide();
 
+        QAction* focusUpAction = actionManagerInternal->GetAction("o3de.action.prefabs.focusUpOneLevel");
+        AZ_Error(
+            "HammerViewportWidget", focusUpAction,
+            "Could not find the prefab focus-up action for the Hammer viewport toolbar");
+        focusUpAction && (toolBar->addAction(focusUpAction), true);
+
+        QWidget* focusPath = actionManagerInternal->GenerateWidgetFromWidgetAction("o3de.widgetAction.prefab.focusPath");
+        AZ_Error(
+            "HammerViewportWidget", focusPath,
+            "Could not generate the prefab focus path widget for the Hammer viewport toolbar");
+        focusPath &&
+            (toolBar->addWidget(focusPath)->setObjectName(QStringLiteral("o3de.widgetAction.prefab.focusPath")), true);
+
+        toolBar->addSeparator();
+
         QWidget* prefabEditMode =
             actionManagerInternal->GenerateWidgetFromWidgetAction("o3de.widgetAction.prefab.editVisualMode");
         AZ_Error(
@@ -366,7 +381,7 @@ namespace Hammer
         placeholder->SetRenderTickEnabled(false);
         placeholder->hide();
 
-        dock->setWindowTitle(QObject::tr("Perspective") + QStringLiteral("   "));
+        dock->setWindowTitle(QObject::tr("Perspective"));
         dock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
         dock->setWidget(adopted);
         adopted->show();
