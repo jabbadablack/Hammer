@@ -13,6 +13,7 @@ class QAction;
 class QDockWidget;
 class QMainWindow;
 class QTimer;
+class QToolBar;
 class QToolButton;
 
 namespace AzQtComponents
@@ -24,7 +25,7 @@ namespace Hammer
 {
     class HammerWidget;
 
-    class HammerViewportLayoutWidget
+    class HammerViewportWidget
         : public QWidget
         , private AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler
         , private Camera::EditorCameraRequestBus::Handler
@@ -35,15 +36,12 @@ namespace Hammer
     public:
         static constexpr int MaxViewportCount = 4;
 
-        explicit HammerViewportLayoutWidget(QWidget* parent = nullptr);
-        ~HammerViewportLayoutWidget() override;
+        explicit HammerViewportWidget(QWidget* parent = nullptr);
+        ~HammerViewportWidget() override;
 
         void AdoptRealPerspectiveViewport(QWidget& realViewport);
         void SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw) override;
         void SetCameraMirroringEnabled(bool enabled) override;
-
-    Q_SIGNALS:
-        void ActiveViewModesChanged(bool normal, bool wireframe, bool overdraw);
 
     protected:
         bool eventFilter(QObject* watched, QEvent* event) override;
@@ -52,6 +50,7 @@ namespace Hammer
         void ActivateViewport(HammerWidget* viewport);
         void ResolveViewportUiOverlayWindow();
         void SyncViewportUiOverlay();
+        QToolBar* BuildViewportToolBar(size_t viewportIndex);
 
         void OnStartGameModeRequest() override;
         void OnStopGameModeRequest() override;
@@ -72,6 +71,7 @@ namespace Hammer
         QAction* m_addViewportAction = nullptr;
         QPointer<QToolButton> m_addViewportButton;
         AZStd::vector<HammerWidget*> m_viewports;
+        AZStd::vector<QPointer<QToolBar>> m_viewportToolBars;
         AzFramework::ViewportId m_activeViewportId = AzFramework::InvalidViewportId;
         HammerWidget* m_activeViewport = nullptr;
         HammerWidget* m_adoptedViewport = nullptr;

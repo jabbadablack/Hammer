@@ -1,6 +1,6 @@
 #include "HammerEditorSystemComponent.h"
 #include "HammerViewModeFeatureProcessor.h"
-#include "HammerViewportLayoutWidget.h"
+#include "HammerViewportWidget.h"
 
 #include <Atom/RPI.Public/FeatureProcessorFactory.h>
 #include <AzCore/IO/FileIO.h>
@@ -15,22 +15,16 @@
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
 #include <AzToolsFramework/ActionManager/Action/ActionManagerInterface.h>
 #include <AzToolsFramework/ActionManager/Action/ActionManagerInternalInterface.h>
-#include <AzToolsFramework/ActionManager/ToolBar/ToolBarManagerInterface.h>
-#include <AzToolsFramework/Editor/ActionManagerIdentifiers/EditorToolBarIdentifiers.h>
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
 
 #include <QAction>
 #include <QApplication>
 #include <QDataStream>
-#include <QDockWidget>
 #include <QFile>
-#include <QIcon>
 #include <QIODevice>
 #include <QMainWindow>
-#include <QMenu>
 #include <QSettings>
 #include <QTimer>
-#include <QToolButton>
 
 #include <Hammer/HammerTypeIds.h>
 
@@ -93,20 +87,14 @@ namespace Hammer
         featureProcessorFactory->RegisterFeatureProcessor<HammerViewModeFeatureProcessor>();
 
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
-        AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusConnect();
-
-        PrepareEditorChrome();
     }
 
     void HammerEditorSystemComponent::Deactivate()
     {
         AzToolsFramework::SetIconsVisible(true);
 
-        m_viewModeButtons.clear();
+        m_viewportWidget && (delete m_viewportWidget.data(), true);
 
-        m_viewportLayoutWidget && (delete m_viewportLayoutWidget.data(), true);
-
-        AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusDisconnect();
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
 
         auto* featureProcessorFactory = AZ::RPI::FeatureProcessorFactory::Get();
@@ -141,8 +129,6 @@ namespace Hammer
 
     void HammerEditorSystemComponent::NotifyEditorInitialized()
     {
-        ConnectViewModeSwitcherSync();
-
         auto* actionManagerInterface = AZ::Interface<AzToolsFramework::ActionManagerInterface>::Get();
         auto* actionManagerInternalInterface = AZ::Interface<AzToolsFramework::ActionManagerInternalInterface>::Get();
         AZ_Error(
@@ -217,102 +203,9 @@ namespace Hammer
             (QObject::connect(saveHammerLayoutAction, &QAction::triggered, saveHammerLayoutAction, exportHammerLayout), true);
     }
 
-    void HammerEditorSystemComponent::OnWidgetActionRegistrationHook()
-    {
-        auto* actionManagerInterface = AZ::Interface<AzToolsFramework::ActionManagerInterface>::Get();
-        AZ_Error("HammerEditorSystemComponent", actionManagerInterface, "Could not find AzToolsFramework::ActionManagerInterface");
-
-        AzToolsFramework::WidgetActionProperties widgetActionProperties;
-        widgetActionProperties.m_name = "Hammer View Mode";
-        widgetActionProperties.m_category = "Viewport";
-
-        actionManagerInterface &&
-            (actionManagerInterface->RegisterWidgetAction(
-                 "o3de.widgetAction.hammer.viewMode", widgetActionProperties,
-                 [this]
-                 {
-                     return CreateViewModeToolBarButton();
-                 }),
-             true);
-    }
-
-    void HammerEditorSystemComponent::OnToolBarBindingHook()
-    {
-        auto* toolBarManagerInterface = AZ::Interface<AzToolsFramework::ToolBarManagerInterface>::Get();
-        AZ_Error("HammerEditorSystemComponent", toolBarManagerInterface, "Could not find AzToolsFramework::ToolBarManagerInterface");
-
-        toolBarManagerInterface &&
-            (toolBarManagerInterface->AddWidgetToToolBar(
-                 EditorIdentifiers::ViewportTopToolBarIdentifier, "o3de.widgetAction.hammer.viewMode", 450),
-             true);
-    }
-
-    QWidget* HammerEditorSystemComponent::CreateViewModeToolBarButton()
-    {
-        QToolButton* button = new QToolButton();
-        button->setIcon(QIcon(QStringLiteral(":/Hammer/toolbar_icon.svg")));
-        button->setToolTip(QObject::tr("View Mode"));
-        button->setPopupMode(QToolButton::InstantPopup);
-        button->setAutoRaise(true);
-
-        QMenu* menu = new QMenu(button);
-        QAction* normalAction = menu->addAction(QObject::tr("Normal"));
-        QAction* wireframeAction = menu->addAction(QObject::tr("Wireframe"));
-        QAction* overdrawAction = menu->addAction(QObject::tr("Quad Overdraw"));
-        for (QAction* action : { normalAction, wireframeAction, overdrawAction })
-        {
-            action->setCheckable(true);
-            QObject::connect(
-                action, &QAction::toggled, button,
-                [normalAction, wireframeAction, overdrawAction]
-                {
-                    HammerViewportRequestBus::Broadcast(
-                        &HammerViewportRequests::SetActiveViewportViewModes, normalAction->isChecked(),
-                        wireframeAction->isChecked(), overdrawAction->isChecked());
-                });
-        }
-        normalAction->setChecked(true);
-
-        menu->addSeparator();
-        QAction* mirrorAction = menu->addAction(QObject::tr("Mirror Main Camera"));
-        mirrorAction->setCheckable(true);
-        QObject::connect(
-            mirrorAction, &QAction::toggled, button,
-            [](bool checked)
-            {
-                HammerViewportRequestBus::Broadcast(&HammerViewportRequests::SetCameraMirroringEnabled, checked);
-            });
-
-        button->setMenu(menu);
-
-        m_viewModeButtons.push_back(button);
-        ConnectViewModeSwitcherSync();
-        return button;
-    }
-
-    void HammerEditorSystemComponent::ConnectViewModeSwitcherSync()
-    {
-        for (QPointer<QToolButton>& button : m_viewModeButtons)
-        {
-            const bool canConnect =
-                m_viewportLayoutWidget && button && !button->property("hammerViewModeSynced").toBool();
-            canConnect &&
-                (QObject::connect(
-                     m_viewportLayoutWidget, &HammerViewportLayoutWidget::ActiveViewModesChanged, button,
-                     [button = button.data()](bool normal, bool wireframe, bool overdraw)
-                     {
-                         const QList<QAction*> actions = button->menu()->actions();
-                         (actions.size() >= 3) &&
-                             (actions[0]->setChecked(normal), actions[1]->setChecked(wireframe),
-                              actions[2]->setChecked(overdraw), true);
-                     }),
-                 button->setProperty("hammerViewModeSynced", true), true);
-        }
-    }
-
     void HammerEditorSystemComponent::EmbedViewportInCenter()
     {
-        AZ_Assert(!m_viewportLayoutWidget, "EmbedViewportInCenter called while a viewport layout widget already exists");
+        AZ_Assert(!m_viewportWidget, "EmbedViewportInCenter called while a viewport layout widget already exists");
 
         auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
         AZ_Error("HammerEditorSystemComponent", viewportContextManager, "Could not find AZ::RPI::ViewportContextRequestsInterface");
@@ -347,26 +240,12 @@ namespace Hammer
         }
         AZ_Error("HammerEditorSystemComponent", viewPaneHost, "Could not find the QMainWindow hosting the main viewport");
 
-        viewPaneHost && (m_viewportLayoutWidget = new HammerViewportLayoutWidget(viewPaneHost), true);
-        (m_viewportLayoutWidget && oldViewport) && (m_viewportLayoutWidget->AdoptRealPerspectiveViewport(*oldViewport), true);
+        viewPaneHost && (m_viewportWidget = new HammerViewportWidget(viewPaneHost), true);
+        (m_viewportWidget && oldViewport) && (m_viewportWidget->AdoptRealPerspectiveViewport(*oldViewport), true);
 
         AZ_Warning(
             "HammerEditorSystemComponent", viewPaneHost && oldViewport,
             "Could not fully embed the Hammer viewports into the editor's dock space");
-    }
-
-    void HammerEditorSystemComponent::PrepareEditorChrome()
-    {
-        AZ_Assert(!m_viewportLayoutWidget, "PrepareEditorChrome should run once, before the viewports have been embedded");
-
-        QSettings settings("O3DE", "O3DE");
-        constexpr const char* MigratedStaleLayoutKey = "HammerGem/migratedStaleLayoutOnce";
-        const bool alreadyMigrated = settings.value(MigratedStaleLayoutKey, false).toBool();
-        (!alreadyMigrated) &&
-            (settings.remove("ViewportLayout"), settings.remove("Editor/fancyWindowLayouts/last"),
-             settings.setValue(MigratedStaleLayoutKey, true), true);
-
-        settings.remove("Editor/fancyWindowLayouts/hammer_last");
     }
 
 } // namespace Hammer

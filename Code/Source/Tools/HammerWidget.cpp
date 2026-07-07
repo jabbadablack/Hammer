@@ -11,6 +11,7 @@
 #include <Atom/RPI.Public/ViewportContextBus.h>
 #include <AtomToolsFramework/Viewport/ModularViewportCameraController.h>
 #include <AzCore/Interface/Interface.h>
+#include <AzCore/Math/MatrixUtils.h>
 #include <AzCore/Name/Name.h>
 #include <AzCore/std/algorithm.h>
 #include <AzCore/std/containers/array.h>
@@ -352,6 +353,11 @@ namespace Hammer
 
         m_adoptedRealViewport && (m_adoptedRealViewport->setParent(nullptr), true);
 
+        AZ::RPI::ViewportContextPtr ownedContext =
+            (!m_adoptedRealViewport && m_sceneInitialized && m_viewportWidget) ? m_viewportWidget->GetViewportContext() : nullptr;
+        AZ::RPI::RenderPipelinePtr ownedPipeline = ownedContext ? ownedContext->GetCurrentPipeline() : nullptr;
+        ownedPipeline && (ownedPipeline->RemoveFromRenderTick(), ownedPipeline->RemoveFromScene(), true);
+
         const bool neverInitialized = !m_sceneInitialized && m_viewportWidget;
         AZ_Warning(
             "HammerWidget", !neverInitialized || AZ::RHI::RHISystemInterface::Get(),
@@ -457,9 +463,9 @@ namespace Hammer
         AZ_Assert(viewportContext, "ApplyActiveState found no ViewportContext on an initialized viewport");
         (viewportContext && !m_pipelineChangedHandler.IsConnected()) &&
             (m_pipelineChangedHandler = AZ::RPI::ViewportContext::PipelineChangedEvent::Handler(
-                 [this, viewportContext](AZ::RPI::RenderPipelinePtr)
+                 [this](AZ::RPI::RenderPipelinePtr)
                  {
-                     SetActivePassesEnabled(viewportContext, m_active);
+                     SetActivePassesEnabled(m_viewportWidget->GetViewportContext(), m_active);
                      ApplyViewModes();
                  }),
              viewportContext->ConnectCurrentPipelineChangedHandler(m_pipelineChangedHandler),
@@ -512,6 +518,22 @@ namespace Hammer
 
         m_cameraController = BuildViewportCameraController(m_viewportWidget->GetId());
         m_viewportWidget->GetControllerList()->Add(m_cameraController);
+
+        AZ::RPI::ViewportContextPtr viewportContext = m_viewportWidget->GetViewportContext();
+        AZ_Assert(viewportContext, "SetupCamera called before the viewport context was initialized");
+        const auto applyProjection = [this](AzFramework::WindowSize size)
+        {
+            AZ::Matrix4x4 viewToClip;
+            AZ::MakePerspectiveFovMatrixRH(
+                viewToClip, SandboxEditor::CameraDefaultFovRadians(),
+                aznumeric_cast<float>(AZStd::max(size.m_width, 1u)) / aznumeric_cast<float>(AZStd::max(size.m_height, 1u)),
+                SandboxEditor::CameraDefaultNearPlaneDistance(), SandboxEditor::CameraDefaultFarPlaneDistance(), true);
+            m_viewportWidget->GetViewportContext()->SetCameraProjectionMatrix(viewToClip);
+        };
+        m_viewportSizeChangedHandler = AZ::RPI::ViewportContext::SizeChangedEvent::Handler(applyProjection);
+        viewportContext &&
+            (viewportContext->ConnectSizeChangedHandler(m_viewportSizeChangedHandler),
+             applyProjection(viewportContext->GetViewportSize()), true);
     }
 
     void HammerWidget::ApplyRenderTickState()
@@ -526,6 +548,6 @@ namespace Hammer
     AzFramework::ViewportId HammerWidget::GetViewportId() const
     {
         AZ_Assert(m_viewportWidget || m_adoptedRealViewport, "GetViewportId called on a HammerWidget with no render viewport");
-        return m_viewportWidget ? m_viewportWidget->GetId() : AzFramework::InvalidViewportId;
+        return (m_viewportWidget && m_sceneInitialized) ? m_viewportWidget->GetId() : AzFramework::InvalidViewportId;
     }
 }
