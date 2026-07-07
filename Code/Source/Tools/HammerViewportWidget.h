@@ -43,9 +43,6 @@ namespace Hammer
         void SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw) override;
         void SetCameraMirroringEnabled(bool enabled) override;
 
-    Q_SIGNALS:
-        void ActiveViewModesChanged(bool normal, bool wireframe, bool overdraw);
-
     protected:
         bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -53,6 +50,7 @@ namespace Hammer
         void ActivateViewport(HammerWidget* viewport);
         void ResolveViewportUiOverlayWindow();
         void SyncViewportUiOverlay();
+        QToolBar* BuildViewportToolBar(size_t viewportIndex);
 
         void OnStartGameModeRequest() override;
         void OnStopGameModeRequest() override;

@@ -21,13 +21,10 @@
 #include <QApplication>
 #include <QDataStream>
 #include <QFile>
-#include <QIcon>
 #include <QIODevice>
 #include <QMainWindow>
-#include <QMenu>
 #include <QSettings>
 #include <QTimer>
-#include <QToolButton>
 
 #include <Hammer/HammerTypeIds.h>
 
@@ -90,18 +87,14 @@ namespace Hammer
         featureProcessorFactory->RegisterFeatureProcessor<HammerViewModeFeatureProcessor>();
 
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
-        AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusConnect();
     }
 
     void HammerEditorSystemComponent::Deactivate()
     {
         AzToolsFramework::SetIconsVisible(true);
 
-        m_viewModeButtons.clear();
-
         m_viewportWidget && (delete m_viewportWidget.data(), true);
 
-        AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusDisconnect();
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
 
         auto* featureProcessorFactory = AZ::RPI::FeatureProcessorFactory::Get();
@@ -136,8 +129,6 @@ namespace Hammer
 
     void HammerEditorSystemComponent::NotifyEditorInitialized()
     {
-        ConnectViewModeSwitcherSync();
-
         auto* actionManagerInterface = AZ::Interface<AzToolsFramework::ActionManagerInterface>::Get();
         auto* actionManagerInternalInterface = AZ::Interface<AzToolsFramework::ActionManagerInternalInterface>::Get();
         AZ_Error(
@@ -210,88 +201,6 @@ namespace Hammer
             : nullptr;
         saveHammerLayoutAction &&
             (QObject::connect(saveHammerLayoutAction, &QAction::triggered, saveHammerLayoutAction, exportHammerLayout), true);
-    }
-
-    void HammerEditorSystemComponent::OnWidgetActionRegistrationHook()
-    {
-        auto* actionManagerInterface = AZ::Interface<AzToolsFramework::ActionManagerInterface>::Get();
-        AZ_Error("HammerEditorSystemComponent", actionManagerInterface, "Could not find AzToolsFramework::ActionManagerInterface");
-
-        AzToolsFramework::WidgetActionProperties widgetActionProperties;
-        widgetActionProperties.m_name = "Hammer View Mode";
-        widgetActionProperties.m_category = "Viewport";
-
-        actionManagerInterface &&
-            (actionManagerInterface->RegisterWidgetAction(
-                 "o3de.widgetAction.hammer.viewMode", widgetActionProperties,
-                 [this]
-                 {
-                     return CreateViewModeToolBarButton();
-                 }),
-             true);
-    }
-
-    QWidget* HammerEditorSystemComponent::CreateViewModeToolBarButton()
-    {
-        QToolButton* button = new QToolButton();
-        button->setIcon(QIcon(QStringLiteral(":/Hammer/toolbar_icon.svg")));
-        button->setToolTip(QObject::tr("View Mode"));
-        button->setPopupMode(QToolButton::InstantPopup);
-        button->setAutoRaise(true);
-
-        QMenu* menu = new QMenu(button);
-        QAction* normalAction = menu->addAction(QObject::tr("Normal"));
-        QAction* wireframeAction = menu->addAction(QObject::tr("Wireframe"));
-        QAction* overdrawAction = menu->addAction(QObject::tr("Quad Overdraw"));
-        for (QAction* action : { normalAction, wireframeAction, overdrawAction })
-        {
-            action->setCheckable(true);
-            QObject::connect(
-                action, &QAction::toggled, button,
-                [normalAction, wireframeAction, overdrawAction]
-                {
-                    HammerViewportRequestBus::Broadcast(
-                        &HammerViewportRequests::SetActiveViewportViewModes, normalAction->isChecked(),
-                        wireframeAction->isChecked(), overdrawAction->isChecked());
-                });
-        }
-        normalAction->setChecked(true);
-
-        menu->addSeparator();
-        QAction* mirrorAction = menu->addAction(QObject::tr("Mirror Main Camera"));
-        mirrorAction->setCheckable(true);
-        QObject::connect(
-            mirrorAction, &QAction::toggled, button,
-            [](bool checked)
-            {
-                HammerViewportRequestBus::Broadcast(&HammerViewportRequests::SetCameraMirroringEnabled, checked);
-            });
-
-        button->setMenu(menu);
-
-        m_viewModeButtons.push_back(button);
-        ConnectViewModeSwitcherSync();
-        return button;
-    }
-
-    void HammerEditorSystemComponent::ConnectViewModeSwitcherSync()
-    {
-        for (QPointer<QToolButton>& button : m_viewModeButtons)
-        {
-            const bool canConnect =
-                m_viewportWidget && button && !button->property("hammerViewModeSynced").toBool();
-            canConnect &&
-                (QObject::connect(
-                     m_viewportWidget, &HammerViewportWidget::ActiveViewModesChanged, button,
-                     [button = button.data()](bool normal, bool wireframe, bool overdraw)
-                     {
-                         const QList<QAction*> actions = button->menu()->actions();
-                         (actions.size() >= 3) &&
-                             (actions[0]->setChecked(normal), actions[1]->setChecked(wireframe),
-                              actions[2]->setChecked(overdraw), true);
-                     }),
-                 button->setProperty("hammerViewModeSynced", true), true);
-        }
     }
 
     void HammerEditorSystemComponent::EmbedViewportInCenter()

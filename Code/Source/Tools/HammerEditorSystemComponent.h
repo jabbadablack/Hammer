@@ -7,11 +7,8 @@
 #include <Clients/HammerSystemComponent.h>
 #include <Hammer/HammerEditorViewportBus.h>
 
-#include <AzCore/std/containers/vector.h>
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
-#include <AzToolsFramework/ActionManager/ActionManagerRegistrationNotificationBus.h>
 
-class QToolButton;
 class QWidget;
 
 namespace Hammer
@@ -21,7 +18,6 @@ namespace Hammer
     class HammerEditorSystemComponent
         : public HammerSystemComponent
         , protected AzToolsFramework::EditorEvents::Bus::Handler
-        , protected AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler
     {
         using BaseSystemComponent = HammerSystemComponent;
     public:
@@ -39,14 +35,9 @@ namespace Hammer
         void NotifyCentralWidgetInitialized() override;
         void NotifyEditorInitialized() override;
 
-        void OnWidgetActionRegistrationHook() override;
-
         void EmbedViewportInCenter();
-        QWidget* CreateViewModeToolBarButton();
-        void ConnectViewModeSwitcherSync();
 
         QPointer<HammerViewportWidget> m_viewportWidget;
-        AZStd::vector<QPointer<QToolButton>> m_viewModeButtons;
         bool m_seedHammerLayout = false;
     };
 } // namespace Hammer

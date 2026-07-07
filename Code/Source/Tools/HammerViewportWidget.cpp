@@ -30,68 +30,111 @@
 
 namespace Hammer
 {
-    namespace
+    QToolBar* HammerViewportWidget::BuildViewportToolBar(size_t viewportIndex)
     {
-        QToolBar* BuildViewportToolBar(QWidget* parent)
+        AZ_Assert(viewportIndex < m_viewports.size(), "BuildViewportToolBar called with an out-of-range viewport index");
+        auto* actionManagerInternal = AZ::Interface<AzToolsFramework::ActionManagerInternalInterface>::Get();
+        auto* menuManagerInternal = AZ::Interface<AzToolsFramework::MenuManagerInternalInterface>::Get();
+        QAction* readinessProbe = (actionManagerInternal && menuManagerInternal)
+            ? actionManagerInternal->GetAction("o3de.action.viewport.menuIcon")
+            : nullptr;
+        if (!readinessProbe)
         {
-            auto* actionManagerInternal = AZ::Interface<AzToolsFramework::ActionManagerInternalInterface>::Get();
-            auto* menuManagerInternal = AZ::Interface<AzToolsFramework::MenuManagerInternalInterface>::Get();
-            QAction* readinessProbe = (actionManagerInternal && menuManagerInternal)
-                ? actionManagerInternal->GetAction("o3de.action.viewport.menuIcon")
-                : nullptr;
-            if (!readinessProbe)
-            {
-                return nullptr;
-            }
-
-            auto* toolBar = new QToolBar(parent);
-            toolBar->setObjectName(QStringLiteral("HammerViewportToolBar"));
-            toolBar->setMovable(false);
-            toolBar->setIconSize(QSize(16, 16));
-            toolBar->hide();
-
-            QWidget* prefabEditMode =
-                actionManagerInternal->GenerateWidgetFromWidgetAction("o3de.widgetAction.prefab.editVisualMode");
-            AZ_Error(
-                "HammerViewportWidget", prefabEditMode,
-                "Could not generate the prefab edit mode widget for the Hammer viewport toolbar");
-            prefabEditMode && (toolBar->addWidget(prefabEditMode), true);
-
-            toolBar->addSeparator();
-
-            QWidget* viewMode = actionManagerInternal->GenerateWidgetFromWidgetAction("o3de.widgetAction.hammer.viewMode");
-            AZ_Error(
-                "HammerViewportWidget", viewMode,
-                "Could not generate the Hammer view mode widget for the Hammer viewport toolbar");
-            viewMode && (toolBar->addWidget(viewMode), true);
-
-            const struct
-            {
-                const char* m_actionId;
-                AZStd::string_view m_menuId;
-            } menuButtons[] = {
-                { "o3de.action.view.goToPosition", EditorIdentifiers::ViewportCameraMenuIdentifier },
-                { "o3de.action.viewport.info.toggle", EditorIdentifiers::ViewportDebugInfoMenuIdentifier },
-                { "o3de.action.view.showHelpers", EditorIdentifiers::ViewportHelpersMenuIdentifier },
-                { "o3de.action.viewport.resizeIcon", EditorIdentifiers::ViewportSizeMenuIdentifier },
-                { "o3de.action.viewport.menuIcon", EditorIdentifiers::ViewportOptionsMenuIdentifier },
-            };
-            for (const auto& menuButton : menuButtons)
-            {
-                QAction* action = actionManagerInternal->GetAction(menuButton.m_actionId);
-                QMenu* menu = menuManagerInternal->GetMenu(AZStd::string(menuButton.m_menuId));
-                AZ_Error(
-                    "HammerViewportWidget", action && menu,
-                    "Viewport toolbar entry '%s' is missing its action or menu", menuButton.m_actionId);
-                QToolButton* button = (action && menu) ? new QToolButton(toolBar) : nullptr;
-                button &&
-                    (button->setPopupMode(QToolButton::MenuButtonPopup), button->setAutoRaise(true), button->setMenu(menu),
-                     button->setDefaultAction(action), toolBar->addWidget(button), true);
-            }
-
-            return toolBar;
+            return nullptr;
         }
-    } // namespace
+
+        auto* toolBar = new QToolBar(this);
+        toolBar->setObjectName(QStringLiteral("HammerViewportToolBar"));
+        toolBar->setMovable(false);
+        toolBar->setIconSize(QSize(16, 16));
+        toolBar->hide();
+
+        QWidget* prefabEditMode =
+            actionManagerInternal->GenerateWidgetFromWidgetAction("o3de.widgetAction.prefab.editVisualMode");
+        AZ_Error(
+            "HammerViewportWidget", prefabEditMode,
+            "Could not generate the prefab edit mode widget for the Hammer viewport toolbar");
+        prefabEditMode && (toolBar->addWidget(prefabEditMode), true);
+
+        toolBar->addSeparator();
+
+        auto* viewModeButton = new QToolButton(toolBar);
+        viewModeButton->setIcon(QIcon(QStringLiteral(":/Hammer/toolbar_icon.svg")));
+        viewModeButton->setToolTip(QObject::tr("View Mode"));
+        viewModeButton->setPopupMode(QToolButton::InstantPopup);
+        viewModeButton->setAutoRaise(true);
+
+        QMenu* viewModeMenu = new QMenu(viewModeButton);
+        QAction* normalAction = viewModeMenu->addAction(QObject::tr("Normal"));
+        QAction* wireframeAction = viewModeMenu->addAction(QObject::tr("Wireframe"));
+        QAction* overdrawAction = viewModeMenu->addAction(QObject::tr("Quad Overdraw"));
+        for (QAction* modeAction : { normalAction, wireframeAction, overdrawAction })
+        {
+            modeAction->setCheckable(true);
+            connect(
+                modeAction, &QAction::toggled, this,
+                [this, viewportIndex, normalAction, wireframeAction, overdrawAction]
+                {
+                    m_viewports[viewportIndex]->SetViewModes(HammerViewModes{
+                        normalAction->isChecked(), wireframeAction->isChecked(), overdrawAction->isChecked() });
+                });
+        }
+        normalAction->setChecked(true);
+
+        viewModeMenu->addSeparator();
+        QAction* mirrorAction = viewModeMenu->addAction(QObject::tr("Mirror Main Camera"));
+        mirrorAction->setCheckable(true);
+        connect(
+            mirrorAction, &QAction::toggled, this,
+            [this](bool checked)
+            {
+                SetCameraMirroringEnabled(checked);
+            });
+
+        connect(
+            viewModeMenu, &QMenu::aboutToShow, this,
+            [this, viewportIndex, normalAction, wireframeAction, overdrawAction, mirrorAction]
+            {
+                const HammerViewModes viewModes = m_viewports[viewportIndex]->GetViewModes();
+                const QSignalBlocker normalBlocker(normalAction);
+                const QSignalBlocker wireframeBlocker(wireframeAction);
+                const QSignalBlocker overdrawBlocker(overdrawAction);
+                const QSignalBlocker mirrorBlocker(mirrorAction);
+                normalAction->setChecked(viewModes.m_normal);
+                wireframeAction->setChecked(viewModes.m_wireframe);
+                overdrawAction->setChecked(viewModes.m_overdraw);
+                mirrorAction->setChecked(m_cameraMirroringEnabled);
+            });
+
+        viewModeButton->setMenu(viewModeMenu);
+        toolBar->addWidget(viewModeButton);
+
+        const struct
+        {
+            const char* m_actionId;
+            AZStd::string_view m_menuId;
+        } menuButtons[] = {
+            { "o3de.action.view.goToPosition", EditorIdentifiers::ViewportCameraMenuIdentifier },
+            { "o3de.action.viewport.info.toggle", EditorIdentifiers::ViewportDebugInfoMenuIdentifier },
+            { "o3de.action.view.showHelpers", EditorIdentifiers::ViewportHelpersMenuIdentifier },
+            { "o3de.action.viewport.resizeIcon", EditorIdentifiers::ViewportSizeMenuIdentifier },
+            { "o3de.action.viewport.menuIcon", EditorIdentifiers::ViewportOptionsMenuIdentifier },
+        };
+        for (const auto& menuButton : menuButtons)
+        {
+            QAction* action = actionManagerInternal->GetAction(menuButton.m_actionId);
+            QMenu* menu = menuManagerInternal->GetMenu(AZStd::string(menuButton.m_menuId));
+            AZ_Error(
+                "HammerViewportWidget", action && menu,
+                "Viewport toolbar entry '%s' is missing its action or menu", menuButton.m_actionId);
+            QToolButton* button = (action && menu) ? new QToolButton(toolBar) : nullptr;
+            button &&
+                (button->setPopupMode(QToolButton::MenuButtonPopup), button->setAutoRaise(true), button->setMenu(menu),
+                 button->setDefaultAction(action), toolBar->addWidget(button), true);
+        }
+
+        return toolBar;
+    }
 
     HammerViewportWidget::HammerViewportWidget(QWidget* parent)
         : QWidget(parent)
@@ -286,9 +329,6 @@ namespace Hammer
         !alreadyActive &&
             (viewport->SetActive(true), m_activeViewport = viewport,
              AzToolsFramework::SetIconsVisible(viewport == m_adoptedViewport), true);
-
-        const HammerViewModes activeModes = viewport->GetViewModes();
-        emit ActiveViewModesChanged(activeModes.m_normal, activeModes.m_wireframe, activeModes.m_overdraw);
     }
 
     void HammerViewportWidget::AdoptRealPerspectiveViewport(QWidget& realViewport)
@@ -354,9 +394,7 @@ namespace Hammer
     void HammerViewportWidget::SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw)
     {
         AZ_Assert(m_activeViewport, "SetActiveViewportViewModes called before any viewport was activated");
-        m_activeViewport &&
-            (m_activeViewport->SetViewModes(HammerViewModes{ normal, wireframe, overdraw }),
-             emit ActiveViewModesChanged(normal, wireframe, overdraw), true);
+        m_activeViewport && (m_activeViewport->SetViewModes(HammerViewModes{ normal, wireframe, overdraw }), true);
     }
 
     void HammerViewportWidget::SyncViewportUiOverlay()
@@ -439,7 +477,7 @@ namespace Hammer
             QWidget* titleBar = (dock && !tabWidget) ? dock->titleBarWidget() : nullptr;
 
             QPointer<QToolBar>& toolBar = m_viewportToolBars[i];
-            (!toolBar) && (toolBar = BuildViewportToolBar(this), true);
+            (!toolBar) && (toolBar = BuildViewportToolBar(i), true);
 
             const bool currentInTab = tabWidget && tabBar && tabWidget->currentWidget() == dock;
             const bool soloWithTitle = titleBar && dock->isVisible();
