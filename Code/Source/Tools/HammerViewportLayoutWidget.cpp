@@ -169,6 +169,9 @@ namespace Hammer
         AZ_Assert(m_adoptedViewport, "Game mode was requested before the real viewport was adopted");
         AZ_Assert(!m_preGameModeActiveViewport, "Game mode started while a previous pre-game-mode viewport is still pending");
         m_adoptedViewport && (m_preGameModeActiveViewport = m_activeViewport, ActivateViewport(m_adoptedViewport), true);
+        auto* adoptedDock = m_adoptedViewport ? qobject_cast<QDockWidget*>(m_adoptedViewport->parentWidget()) : nullptr;
+        auto* adoptedTabWidget = AzQtComponents::DockTabWidget::ParentTabWidget(adoptedDock);
+        adoptedTabWidget && (adoptedTabWidget->setCurrentWidget(adoptedDock), true);
         for (HammerWidget* viewport : m_viewports)
         {
             viewport->SetGameModeSuppressed(true);
@@ -186,6 +189,10 @@ namespace Hammer
         {
             viewport->SetGameModeSuppressed(false);
         }
+        auto* previousDock =
+            m_preGameModeActiveViewport ? qobject_cast<QDockWidget*>(m_preGameModeActiveViewport->parentWidget()) : nullptr;
+        auto* previousTabWidget = AzQtComponents::DockTabWidget::ParentTabWidget(previousDock);
+        previousTabWidget && (previousTabWidget->setCurrentWidget(previousDock), true);
         m_preGameModeActiveViewport && (ActivateViewport(m_preGameModeActiveViewport), true);
         m_preGameModeActiveViewport = nullptr;
     }
@@ -288,7 +295,7 @@ namespace Hammer
 
         for (HammerWidget* viewport : m_viewports)
         {
-            viewport->SetRenderTickEnabled(viewport->isVisible() || viewport == m_adoptedViewport);
+            viewport->SetRenderTickEnabled(viewport->isVisible());
         }
 
         bool anyDockDocked = false;

@@ -352,6 +352,11 @@ namespace Hammer
 
         m_adoptedRealViewport && (m_adoptedRealViewport->setParent(nullptr), true);
 
+        AZ::RPI::ViewportContextPtr ownedContext =
+            (!m_adoptedRealViewport && m_sceneInitialized && m_viewportWidget) ? m_viewportWidget->GetViewportContext() : nullptr;
+        AZ::RPI::RenderPipelinePtr ownedPipeline = ownedContext ? ownedContext->GetCurrentPipeline() : nullptr;
+        ownedPipeline && (ownedPipeline->RemoveFromRenderTick(), ownedPipeline->RemoveFromScene(), true);
+
         const bool neverInitialized = !m_sceneInitialized && m_viewportWidget;
         AZ_Warning(
             "HammerWidget", !neverInitialized || AZ::RHI::RHISystemInterface::Get(),
@@ -457,9 +462,9 @@ namespace Hammer
         AZ_Assert(viewportContext, "ApplyActiveState found no ViewportContext on an initialized viewport");
         (viewportContext && !m_pipelineChangedHandler.IsConnected()) &&
             (m_pipelineChangedHandler = AZ::RPI::ViewportContext::PipelineChangedEvent::Handler(
-                 [this, viewportContext](AZ::RPI::RenderPipelinePtr)
+                 [this](AZ::RPI::RenderPipelinePtr)
                  {
-                     SetActivePassesEnabled(viewportContext, m_active);
+                     SetActivePassesEnabled(m_viewportWidget->GetViewportContext(), m_active);
                      ApplyViewModes();
                  }),
              viewportContext->ConnectCurrentPipelineChangedHandler(m_pipelineChangedHandler),
