@@ -10,6 +10,9 @@
 #include <AzQtComponents/Components/DockTabWidget.h>
 #include <AzQtComponents/Components/FancyDocking.h>
 #include <AzQtComponents/Components/StyledDockWidget.h>
+#include <AzToolsFramework/ActionManager/Action/ActionManagerInternalInterface.h>
+#include <AzToolsFramework/ActionManager/Menu/MenuManagerInternalInterface.h>
+#include <AzToolsFramework/Editor/ActionManagerIdentifiers/EditorMenuIdentifiers.h>
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
 #include <Editor/EditorViewportSettings.h>
 
@@ -18,13 +21,78 @@
 #include <QFile>
 #include <QIcon>
 #include <QMainWindow>
+#include <QMenu>
 #include <QStyle>
 #include <QTabBar>
 #include <QTimer>
+#include <QToolBar>
 #include <QToolButton>
 
 namespace Hammer
 {
+    namespace
+    {
+        QToolBar* BuildViewportToolBar(QWidget* parent)
+        {
+            auto* actionManagerInternal = AZ::Interface<AzToolsFramework::ActionManagerInternalInterface>::Get();
+            auto* menuManagerInternal = AZ::Interface<AzToolsFramework::MenuManagerInternalInterface>::Get();
+            QAction* readinessProbe = (actionManagerInternal && menuManagerInternal)
+                ? actionManagerInternal->GetAction("o3de.action.viewport.menuIcon")
+                : nullptr;
+            if (!readinessProbe)
+            {
+                return nullptr;
+            }
+
+            auto* toolBar = new QToolBar(parent);
+            toolBar->setObjectName(QStringLiteral("HammerViewportToolBar"));
+            toolBar->setMovable(false);
+            toolBar->setIconSize(QSize(16, 16));
+            toolBar->hide();
+
+            QWidget* prefabEditMode =
+                actionManagerInternal->GenerateWidgetFromWidgetAction("o3de.widgetAction.prefab.editVisualMode");
+            AZ_Error(
+                "HammerViewportWidget", prefabEditMode,
+                "Could not generate the prefab edit mode widget for the Hammer viewport toolbar");
+            prefabEditMode && (toolBar->addWidget(prefabEditMode), true);
+
+            toolBar->addSeparator();
+
+            QWidget* viewMode = actionManagerInternal->GenerateWidgetFromWidgetAction("o3de.widgetAction.hammer.viewMode");
+            AZ_Error(
+                "HammerViewportWidget", viewMode,
+                "Could not generate the Hammer view mode widget for the Hammer viewport toolbar");
+            viewMode && (toolBar->addWidget(viewMode), true);
+
+            const struct
+            {
+                const char* m_actionId;
+                AZStd::string_view m_menuId;
+            } menuButtons[] = {
+                { "o3de.action.view.goToPosition", EditorIdentifiers::ViewportCameraMenuIdentifier },
+                { "o3de.action.viewport.info.toggle", EditorIdentifiers::ViewportDebugInfoMenuIdentifier },
+                { "o3de.action.view.showHelpers", EditorIdentifiers::ViewportHelpersMenuIdentifier },
+                { "o3de.action.viewport.resizeIcon", EditorIdentifiers::ViewportSizeMenuIdentifier },
+                { "o3de.action.viewport.menuIcon", EditorIdentifiers::ViewportOptionsMenuIdentifier },
+            };
+            for (const auto& menuButton : menuButtons)
+            {
+                QAction* action = actionManagerInternal->GetAction(menuButton.m_actionId);
+                QMenu* menu = menuManagerInternal->GetMenu(AZStd::string(menuButton.m_menuId));
+                AZ_Error(
+                    "HammerViewportWidget", action && menu,
+                    "Viewport toolbar entry '%s' is missing its action or menu", menuButton.m_actionId);
+                QToolButton* button = (action && menu) ? new QToolButton(toolBar) : nullptr;
+                button &&
+                    (button->setPopupMode(QToolButton::MenuButtonPopup), button->setAutoRaise(true), button->setMenu(menu),
+                     button->setDefaultAction(action), toolBar->addWidget(button), true);
+            }
+
+            return toolBar;
+        }
+    } // namespace
+
     HammerViewportWidget::HammerViewportWidget(QWidget* parent)
         : QWidget(parent)
     {
@@ -72,6 +140,7 @@ namespace Hammer
         }
 
         AZ_Assert(m_viewports.size() == MaxViewportCount, "HammerViewportWidget failed to create all %d viewports", MaxViewportCount);
+        m_viewportToolBars.resize(m_viewports.size());
 
         m_dockAnchor = new AzQtComponents::StyledDockWidget(QStringLiteral("Viewport Dock Area"), this);
         m_dockAnchor->setObjectName(QStringLiteral("HammerViewportDockAnchor"));
@@ -132,6 +201,12 @@ namespace Hammer
         AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler::BusDisconnect();
         HammerViewportRequestBus::Handler::BusDisconnect();
         HammerEditorActiveViewportRequestBus::Handler::BusDisconnect();
+
+        for (QPointer<QToolBar>& toolBar : m_viewportToolBars)
+        {
+            toolBar && (delete toolBar.data(), true);
+        }
+        m_viewportToolBars.clear();
 
         for (HammerWidget* viewport : m_viewports)
         {
@@ -352,6 +427,35 @@ namespace Hammer
             (adoptedTabBar && adoptedTabIndex != -1) ? adoptedTabBar->tabButton(adoptedTabIndex, closeSide) : nullptr;
         adoptedCloseButton &&
             (adoptedTabBar->setTabButton(adoptedTabIndex, closeSide, nullptr), adoptedCloseButton->deleteLater(), true);
+
+        AZ_Assert(
+            m_viewportToolBars.size() == m_viewports.size(),
+            "The viewport toolbar list is out of sync with the viewport list");
+        for (size_t i = 0; i < m_viewports.size(); ++i)
+        {
+            auto* dock = qobject_cast<QDockWidget*>(m_viewports[i]->parentWidget());
+            auto* tabWidget = AzQtComponents::DockTabWidget::ParentTabWidget(dock);
+            QTabBar* tabBar = tabWidget ? tabWidget->tabBar() : nullptr;
+            QWidget* titleBar = (dock && !tabWidget) ? dock->titleBarWidget() : nullptr;
+
+            QPointer<QToolBar>& toolBar = m_viewportToolBars[i];
+            (!toolBar) && (toolBar = BuildViewportToolBar(this), true);
+
+            const bool currentInTab = tabWidget && tabBar && tabWidget->currentWidget() == dock;
+            const bool soloWithTitle = titleBar && dock->isVisible();
+            QWidget* host = currentInTab ? static_cast<QWidget*>(tabWidget) : (soloWithTitle ? static_cast<QWidget*>(dock) : nullptr);
+
+            (toolBar && !host) && (toolBar->hide(), true);
+            (toolBar && host && toolBar->parentWidget() != host) && (toolBar->setParent(host), true);
+            (toolBar && host) &&
+                (toolBar->resize(toolBar->sizeHint()),
+                 toolBar->move(
+                     host->width() - toolBar->width() - (currentInTab ? 4 : 56),
+                     currentInTab
+                         ? tabBar->mapTo(tabWidget, QPoint(0, (tabBar->height() - toolBar->height()) / 2)).y()
+                         : titleBar->geometry().y() + (titleBar->height() - toolBar->height()) / 2),
+                 toolBar->show(), toolBar->raise(), true);
+        }
 
         auto* anchorTabWidget = AzQtComponents::DockTabWidget::IsTabbed(m_dockAnchor)
             ? AzQtComponents::DockTabWidget::ParentTabWidget(m_dockAnchor)

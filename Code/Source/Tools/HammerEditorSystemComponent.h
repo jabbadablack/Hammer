@@ -40,7 +40,6 @@ namespace Hammer
         void NotifyEditorInitialized() override;
 
         void OnWidgetActionRegistrationHook() override;
-        void OnToolBarBindingHook() override;
 
         void EmbedViewportInCenter();
         QWidget* CreateViewModeToolBarButton();

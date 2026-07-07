@@ -548,6 +548,6 @@ namespace Hammer
     AzFramework::ViewportId HammerWidget::GetViewportId() const
     {
         AZ_Assert(m_viewportWidget || m_adoptedRealViewport, "GetViewportId called on a HammerWidget with no render viewport");
-        return m_viewportWidget ? m_viewportWidget->GetId() : AzFramework::InvalidViewportId;
+        return (m_viewportWidget && m_sceneInitialized) ? m_viewportWidget->GetId() : AzFramework::InvalidViewportId;
     }
 }

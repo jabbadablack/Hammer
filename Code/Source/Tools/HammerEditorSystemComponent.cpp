@@ -15,8 +15,6 @@
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
 #include <AzToolsFramework/ActionManager/Action/ActionManagerInterface.h>
 #include <AzToolsFramework/ActionManager/Action/ActionManagerInternalInterface.h>
-#include <AzToolsFramework/ActionManager/ToolBar/ToolBarManagerInterface.h>
-#include <AzToolsFramework/Editor/ActionManagerIdentifiers/EditorToolBarIdentifiers.h>
 #include <AzToolsFramework/Viewport/ViewportSettings.h>
 
 #include <QAction>
@@ -230,17 +228,6 @@ namespace Hammer
                  {
                      return CreateViewModeToolBarButton();
                  }),
-             true);
-    }
-
-    void HammerEditorSystemComponent::OnToolBarBindingHook()
-    {
-        auto* toolBarManagerInterface = AZ::Interface<AzToolsFramework::ToolBarManagerInterface>::Get();
-        AZ_Error("HammerEditorSystemComponent", toolBarManagerInterface, "Could not find AzToolsFramework::ToolBarManagerInterface");
-
-        toolBarManagerInterface &&
-            (toolBarManagerInterface->AddWidgetToToolBar(
-                 EditorIdentifiers::ViewportTopToolBarIdentifier, "o3de.widgetAction.hammer.viewMode", 450),
              true);
     }
 

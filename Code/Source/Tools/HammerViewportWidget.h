@@ -13,6 +13,7 @@ class QAction;
 class QDockWidget;
 class QMainWindow;
 class QTimer;
+class QToolBar;
 class QToolButton;
 
 namespace AzQtComponents
@@ -72,6 +73,7 @@ namespace Hammer
         QAction* m_addViewportAction = nullptr;
         QPointer<QToolButton> m_addViewportButton;
         AZStd::vector<HammerWidget*> m_viewports;
+        AZStd::vector<QPointer<QToolBar>> m_viewportToolBars;
         AzFramework::ViewportId m_activeViewportId = AzFramework::InvalidViewportId;
         HammerWidget* m_activeViewport = nullptr;
         HammerWidget* m_adoptedViewport = nullptr;
