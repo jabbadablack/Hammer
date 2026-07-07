@@ -47,6 +47,7 @@ namespace Hammer
         toolBar->setObjectName(QStringLiteral("HammerViewportToolBar"));
         toolBar->setMovable(false);
         toolBar->setIconSize(QSize(16, 16));
+        toolBar->setStyleSheet(QStringLiteral("QToolBar { background: transparent; border: none; padding: 0px; }"));
         toolBar->hide();
 
         QWidget* prefabEditMode =
