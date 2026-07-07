@@ -11,12 +11,12 @@
 
 class QAction;
 class QDockWidget;
+class QMainWindow;
 class QTimer;
 class QToolButton;
 
 namespace AzQtComponents
 {
-    class DockMainWindow;
     class FancyDocking;
 } // namespace AzQtComponents
 
@@ -66,7 +66,7 @@ namespace Hammer
         AZStd::optional<float> GetCameraFoV() override;
         bool GetActiveCameraState(AzFramework::CameraState& cameraState) override;
 
-        AzQtComponents::DockMainWindow* m_dockHost = nullptr;
+        QMainWindow* m_dockHost = nullptr;
         AzQtComponents::FancyDocking* m_fancyDocking = nullptr;
         QDockWidget* m_dockAnchor = nullptr;
         QAction* m_addViewportAction = nullptr;

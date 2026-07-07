@@ -11,7 +11,7 @@
 #include <Atom/RPI.Public/ViewportContext.h>
 #include <Atom/RPI.Public/ViewportContextBus.h>
 
-#include <AzToolsFramework/API/ViewPaneOptions.h>
+#include <AzToolsFramework/API/ToolsApplicationAPI.h>
 #include <AzToolsFramework/ActionManager/Action/ActionManagerInterface.h>
 #include <AzToolsFramework/ActionManager/ToolBar/ToolBarManagerInterface.h>
 #include <AzToolsFramework/Editor/ActionManagerIdentifiers/EditorToolBarIdentifiers.h>
@@ -30,8 +30,6 @@ namespace Hammer
 {
     namespace
     {
-        constexpr const char* ViewportPaneName = "Hammer Viewport";
-
         QWidget* FindMainEditorViewport(QWidget& root)
         {
             const QList<QWidget*> children = root.findChildren<QWidget*>();
@@ -98,11 +96,7 @@ namespace Hammer
 
         m_viewModeButtons.clear();
 
-        m_viewportLayoutWidget && (RestoreViewportPaneToDockWidget(m_viewportLayoutWidget), true);
-
-        AzToolsFramework::CloseViewPane(ViewportPaneName);
-        AzToolsFramework::UnregisterViewPane(ViewportPaneName);
-        m_viewportLayoutWidget = nullptr;
+        m_viewportLayoutWidget && (delete m_viewportLayoutWidget.data(), true);
 
         AzToolsFramework::ActionManagerRegistrationNotificationBus::Handler::BusDisconnect();
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
@@ -111,11 +105,6 @@ namespace Hammer
         featureProcessorFactory && (featureProcessorFactory->UnregisterFeatureProcessor<HammerViewModeFeatureProcessor>(), true);
 
         HammerSystemComponent::Deactivate();
-    }
-
-    void HammerEditorSystemComponent::NotifyRegisterViews()
-    {
-        RegisterViewportPane();
     }
 
     void HammerEditorSystemComponent::NotifyEditorInitialized()
@@ -217,25 +206,10 @@ namespace Hammer
         }
     }
 
-    void HammerEditorSystemComponent::RegisterViewportPane()
-    {
-        AzToolsFramework::ViewPaneOptions viewOptions;
-        viewOptions.isDeletable = true;
-        viewOptions.showInMenu = false;
-        viewOptions.isDisabledInComponentMode = false;
-
-        AzToolsFramework::RegisterViewPane<QWidget>(
-            ViewportPaneName, "Viewport", viewOptions,
-            [this](QWidget* parent) -> QWidget*
-            {
-                AZ_Assert(!m_viewportLayoutWidget, "The '%s' view pane's widget was requested a second time", ViewportPaneName);
-                m_viewportLayoutWidget = new HammerViewportLayoutWidget(parent);
-                return m_viewportLayoutWidget;
-            });
-    }
-
     void HammerEditorSystemComponent::EmbedViewportInCenter()
     {
+        AZ_Assert(!m_viewportLayoutWidget, "EmbedViewportInCenter called while a viewport layout widget already exists");
+
         auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
         AZ_Error("HammerEditorSystemComponent", viewportContextManager, "Could not find AZ::RPI::ViewportContextRequestsInterface");
 
@@ -245,24 +219,6 @@ namespace Hammer
         defaultContext &&
             (viewportContextManager->RenameViewportContext(defaultContext, AZ::Name("Hammer Startup Placeholder")), true);
 
-        QWidget* oldViewport = EmbedViewportPaneAsCentralWidget();
-        (oldViewport && m_viewportLayoutWidget) && (m_viewportLayoutWidget->AdoptRealPerspectiveViewport(*oldViewport), true);
-    }
-
-    void HammerEditorSystemComponent::PrepareEditorChrome()
-    {
-        AZ_Assert(!m_paneDockWidget, "PrepareEditorChrome should run once, before any view pane has been embedded");
-
-        QSettings settings("O3DE", "O3DE");
-        constexpr const char* MigratedStaleLayoutKey = "HammerGem/migratedStaleLayoutOnce";
-        const bool alreadyMigrated = settings.value(MigratedStaleLayoutKey, false).toBool();
-        (!alreadyMigrated) &&
-            (settings.remove("ViewportLayout"), settings.remove("Editor/fancyWindowLayouts/last"),
-             settings.setValue(MigratedStaleLayoutKey, true), true);
-    }
-
-    QWidget* HammerEditorSystemComponent::EmbedViewportPaneAsCentralWidget()
-    {
         QWidget* mainWindowWidget = nullptr;
         AzToolsFramework::EditorRequestBus::BroadcastResult(mainWindowWidget, &AzToolsFramework::EditorRequests::GetMainWindow);
         AZ_Error("HammerEditorSystemComponent", mainWindowWidget, "Could not get the Editor main window");
@@ -279,44 +235,24 @@ namespace Hammer
         }
         AZ_Error("HammerEditorSystemComponent", viewPaneHost, "Could not find the QMainWindow hosting the main viewport");
 
-        QWidget* oldCentralWidget = nullptr;
-        viewPaneHost && (oldCentralWidget = viewPaneHost->centralWidget(), true);
+        viewPaneHost && (m_viewportLayoutWidget = new HammerViewportLayoutWidget(viewPaneHost), true);
+        (m_viewportLayoutWidget && oldViewport) && (m_viewportLayoutWidget->AdoptRealPerspectiveViewport(*oldViewport), true);
 
-        viewPaneHost && (AzToolsFramework::OpenViewPane(ViewportPaneName), true);
-
-        QWidget* content = nullptr;
-        viewPaneHost && (content = AzToolsFramework::GetViewPaneWidget<QWidget>(ViewportPaneName), true);
-        AZ_Error("HammerEditorSystemComponent", content, "Could not open the '%s' view pane", ViewportPaneName);
-        AZ_Assert(
-            !content || content == m_viewportLayoutWidget, "Opened '%s' view pane's content is not the expected widget",
-            ViewportPaneName);
-
-        QDockWidget* paneDockWidget = nullptr;
-        content && (paneDockWidget = qobject_cast<QDockWidget*>(content->parentWidget()), true);
-        AZ_Error("HammerEditorSystemComponent", paneDockWidget, "Could not find the dock widget hosting the '%s' view pane", ViewportPaneName);
-        m_paneDockWidget = paneDockWidget;
-
-        (viewPaneHost && paneDockWidget) &&
-            (viewPaneHost->removeDockWidget(paneDockWidget), paneDockWidget->hide(), paneDockWidget->setWidget(nullptr), true);
-
-        (viewPaneHost && content) && (viewPaneHost->setCentralWidget(content), content->show(), true);
-
-        (oldCentralWidget && oldCentralWidget != content) &&
-            (oldCentralWidget->hide(), oldCentralWidget->setParent(nullptr), true);
-
-        const bool succeeded = viewPaneHost && oldViewport && content && paneDockWidget;
         AZ_Warning(
-            "HammerEditorSystemComponent", succeeded, "Could not fully embed the '%s' view pane as the central widget", ViewportPaneName);
-        return succeeded ? oldViewport : nullptr;
+            "HammerEditorSystemComponent", viewPaneHost && oldViewport,
+            "Could not fully embed the Hammer viewports into the editor's dock space");
     }
 
-    void HammerEditorSystemComponent::RestoreViewportPaneToDockWidget(QWidget* content)
+    void HammerEditorSystemComponent::PrepareEditorChrome()
     {
-        AZ_Assert(content, "RestoreViewportPaneToDockWidget called with a null content widget");
-        AZ_Warning(
-            "HammerEditorSystemComponent", m_paneDockWidget,
-            "No dock widget was captured to restore the view pane's content into; it may already have been closed");
+        AZ_Assert(!m_viewportLayoutWidget, "PrepareEditorChrome should run once, before the viewports have been embedded");
 
-        (m_paneDockWidget && content) && (content->hide(), m_paneDockWidget->setWidget(content), true);
+        QSettings settings("O3DE", "O3DE");
+        constexpr const char* MigratedStaleLayoutKey = "HammerGem/migratedStaleLayoutOnce";
+        const bool alreadyMigrated = settings.value(MigratedStaleLayoutKey, false).toBool();
+        (!alreadyMigrated) &&
+            (settings.remove("ViewportLayout"), settings.remove("Editor/fancyWindowLayouts/last"),
+             settings.setValue(MigratedStaleLayoutKey, true), true);
     }
+
 } // namespace Hammer
