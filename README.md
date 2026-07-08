@@ -15,5 +15,5 @@ Hammer is an O3DE gem initially inspired by Valve's Source engine editor. it is 
 
 ## Looking to try it out?
 
-For the time being the development branch of O3DE doesn't have all the small tweaks that are needed to effectively run this gem. here's (my engine fork)[https://github.com/jabbadablack/Seer] if you wish to give it a go.
+For the time being the development branch of O3DE doesn't have all the small tweaks that are needed to effectively run this gem. here's [my engine fork](https://github.com/jabbadablack/Seer) if you wish to give it a go.
 Please report any bugs, issues, and missing features in the repo.
