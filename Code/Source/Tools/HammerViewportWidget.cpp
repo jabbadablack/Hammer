@@ -1,8 +1,11 @@
 #include "HammerViewportWidget.h"
 #include "HammerWidget.h"
 
+#include <Atom/RPI.Public/Pass/Pass.h>
+#include <Atom/RPI.Public/RenderPipeline.h>
 #include <Atom/RPI.Public/ViewportContext.h>
 #include <Atom/RPI.Public/ViewportContextBus.h>
+#include <AzCore/Name/Name.h>
 #include <AtomToolsFramework/Viewport/ModularViewportCameraControllerRequestBus.h>
 #include <AzCore/Interface/Interface.h>
 #include <AzCore/std/algorithm.h>
@@ -382,9 +385,15 @@ namespace Hammer
         auto* adoptedDock = qobject_cast<QDockWidget*>(m_adoptedViewport->parentWidget());
         AZ_Assert(adoptedDock, "The adopted viewport is not hosted in a QDockWidget");
 
+        auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
         for (HammerWidget* viewport : m_viewports)
         {
             viewport->SetRenderTickEnabled(viewport->isVisible());
+            AZ::RPI::ViewportContextPtr viewportContext =
+                viewportContextManager ? viewportContextManager->GetViewportContextById(viewport->GetViewportId()) : nullptr;
+            AZ::RPI::RenderPipelinePtr pipeline = viewportContext ? viewportContext->GetCurrentPipeline() : nullptr;
+            AZ::RPI::Ptr<AZ::RPI::Pass> iconPass = pipeline ? pipeline->FindFirstPass(AZ::Name("2DPass")) : nullptr;
+            iconPass && (iconPass->SetEnabled(viewport->EngineViewport() == primaryViewport), true);
         }
 
         bool anyDockDocked = false;
@@ -519,7 +528,6 @@ namespace Hammer
          activeViewportWindow->isActiveWindow()) &&
             (m_viewportUiOverlayWindow->raise(), true);
 
-        auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
         AZ::RPI::ViewportContextPtr defaultContext;
         (m_cameraMirroringEnabled && viewportContextManager) &&
             (defaultContext = viewportContextManager->GetDefaultViewportContext(), true);
