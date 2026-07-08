@@ -34,6 +34,7 @@
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
+#include <QVBoxLayout>
 #include <QWidgetAction>
 
 namespace Hammer
@@ -183,9 +184,6 @@ namespace Hammer
         QWidget* oldCentralWidget = m_dockHost ? m_dockHost->takeCentralWidget() : nullptr;
         oldCentralWidget && (oldCentralWidget->hide(), true);
 
-        auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
-        AZ_Assert(viewportContextManager, "ViewportLayout constructed before the ViewportContextManager exists");
-
         for (int i = 0; i < MaxViewportCount; ++i)
         {
             auto* dock = new AzQtComponents::StyledDockWidget(
@@ -195,58 +193,10 @@ namespace Hammer
                 i == 0 ? QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable
                        : QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetClosable);
             dock->hide();
-
-            EditorViewportWidget* engineViewport =
-                i == 0 ? &realViewport : new EditorViewportWidget(QStringLiteral("Perspective %1").arg(i + 1));
-            AZ_Assert(
-                i == 0 || !viewportContextManager || !viewportContextManager->GetViewportContextById(i),
-                "ViewportContext id %d is already taken; Hammer cannot claim it for a new viewport", i);
-            (i != 0) &&
-                (engineViewport->resize(256, 256), static_cast<QtViewport*>(engineViewport)->SetViewportId(i),
-                 engineViewport->ConnectViewportInteractionRequestBus(), true);
-
-            (i == 0) && (engineViewport->hide(), engineViewport->setParent(nullptr), true);
-            engineViewport->setMinimumSize(50, 50);
-            dock->setWidget(engineViewport);
-            (i == 0) && (engineViewport->show(), true);
-
-            Slot& slot = m_slots[i];
-            slot.m_engineViewport = engineViewport;
-            slot.m_dock = dock;
-
-            const AzFramework::ViewportId viewportId = engineViewport->GetViewportId();
-            AZ::RPI::ViewportContextPtr viewportContext =
-                viewportContextManager ? viewportContextManager->GetViewportContextById(viewportId) : nullptr;
-            AZ_Error("Hammer", viewportContext, "No ViewportContext exists for viewport %d", viewportId);
-
-            slot.m_pipelineChanged = AZ::RPI::ViewportContext::PipelineChangedEvent::Handler(
-                [this, i](AZ::RPI::RenderPipelinePtr)
-                {
-                    ApplyViewModes(m_slots[i]);
-                });
-            viewportContext && (viewportContext->ConnectCurrentPipelineChangedHandler(slot.m_pipelineChanged), true);
-
-            const auto applyProjection = [viewportId](AzFramework::WindowSize size)
-            {
-                AZ::Matrix4x4 viewToClip;
-                AZ::MakePerspectiveFovMatrixRH(
-                    viewToClip, SandboxEditor::CameraDefaultFovRadians(),
-                    aznumeric_cast<float>(AZStd::max(size.m_width, 1u)) / aznumeric_cast<float>(AZStd::max(size.m_height, 1u)),
-                    SandboxEditor::CameraDefaultNearPlaneDistance(), SandboxEditor::CameraDefaultFarPlaneDistance(), true);
-                auto* contextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
-                AZ::RPI::ViewportContextPtr context = contextManager ? contextManager->GetViewportContextById(viewportId) : nullptr;
-                context && (context->SetCameraProjectionMatrix(viewToClip), true);
-            };
-            slot.m_sizeChanged = AZ::RPI::ViewportContext::SizeChangedEvent::Handler(applyProjection);
-            (i != 0 && viewportContext) &&
-                (viewportContext->ConnectSizeChangedHandler(slot.m_sizeChanged),
-                 applyProjection(viewportContext->GetViewportSize()), true);
-
-            AZ::RPI::RenderPipelinePtr pipeline = viewportContext ? viewportContext->GetCurrentPipeline() : nullptr;
-            pipeline && ((i == 0 ? pipeline->AddToRenderTick() : pipeline->RemoveFromRenderTick()), true);
-
-            ApplyViewModes(slot);
+            m_slots[i].m_dock = dock;
         }
+
+        InitializeSlot(0, &realViewport);
 
         m_dockAnchor = new AzQtComponents::StyledDockWidget(QStringLiteral("Viewport Dock Area"), this);
         m_dockAnchor->setObjectName(QStringLiteral("HammerViewportDockAnchor"));
@@ -267,12 +217,15 @@ namespace Hammer
                 Slot* unused = nullptr;
                 for (Slot& slot : m_slots)
                 {
-                    const bool inUse = &slot == &m_slots[0] || slot.m_dock->isVisible() ||
-                        AzQtComponents::DockTabWidget::IsTabbed(slot.m_dock);
+                    const bool inUse = &slot == &m_slots[0] ||
+                        (slot.m_engineViewport &&
+                         (slot.m_dock->isVisible() || AzQtComponents::DockTabWidget::IsTabbed(slot.m_dock)));
                     unused = (!unused && !inUse) ? &slot : unused;
                 }
                 (unused && m_fancyDocking) &&
-                    (m_fancyDocking->tabifyDockWidget(m_slots[0].m_dock, unused->m_dock, m_dockHost),
+                    (unused->m_engineViewport ||
+                         (InitializeSlot(aznumeric_cast<int>(unused - m_slots.data()), nullptr), true),
+                     m_fancyDocking->tabifyDockWidget(m_slots[0].m_dock, unused->m_dock, m_dockHost),
                      unused->m_engineViewport->show(), true);
             });
 
@@ -353,6 +306,69 @@ namespace Hammer
         m_preGameModeActiveSlot = nullptr;
     }
 
+    void ViewportLayout::InitializeSlot(int index, EditorViewportWidget* adoptedViewport)
+    {
+        Slot& slot = m_slots[index];
+        AZ_Assert(!slot.m_engineViewport, "InitializeSlot called on a slot that already has an engine viewport");
+        AZ_Assert((index == 0) == (adoptedViewport != nullptr), "Only slot 0 may adopt the editor's viewport");
+
+        auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
+        AZ_Assert(viewportContextManager, "InitializeSlot called before the ViewportContextManager exists");
+        AZ_Assert(
+            index == 0 || !viewportContextManager || !viewportContextManager->GetViewportContextById(index),
+            "ViewportContext id %d is already taken; Hammer cannot claim it for a new viewport", index);
+
+        EditorViewportWidget* engineViewport =
+            adoptedViewport ? adoptedViewport : new EditorViewportWidget(QStringLiteral("Perspective %1").arg(index + 1));
+        (index != 0) &&
+            (engineViewport->resize(256, 256), static_cast<QtViewport*>(engineViewport)->SetViewportId(index),
+             engineViewport->ConnectViewportInteractionRequestBus(), true);
+
+        (index == 0) && (engineViewport->hide(), engineViewport->setParent(nullptr), true);
+        engineViewport->setMinimumSize(50, 50);
+        auto* container = new QWidget(slot.m_dock);
+        auto* containerLayout = new QVBoxLayout(container);
+        containerLayout->setContentsMargins(0, 0, 0, 0);
+        containerLayout->addWidget(engineViewport);
+        slot.m_dock->setWidget(container);
+        (index == 0) && (engineViewport->show(), true);
+
+        slot.m_engineViewport = engineViewport;
+
+        const AzFramework::ViewportId viewportId = engineViewport->GetViewportId();
+        AZ::RPI::ViewportContextPtr viewportContext =
+            viewportContextManager ? viewportContextManager->GetViewportContextById(viewportId) : nullptr;
+        AZ_Error("Hammer", viewportContext, "No ViewportContext exists for viewport %d", viewportId);
+
+        slot.m_pipelineChanged = AZ::RPI::ViewportContext::PipelineChangedEvent::Handler(
+            [this, index](AZ::RPI::RenderPipelinePtr)
+            {
+                ApplyViewModes(m_slots[index]);
+            });
+        viewportContext && (viewportContext->ConnectCurrentPipelineChangedHandler(slot.m_pipelineChanged), true);
+
+        const auto applyProjection = [viewportId](AzFramework::WindowSize size)
+        {
+            AZ::Matrix4x4 viewToClip;
+            AZ::MakePerspectiveFovMatrixRH(
+                viewToClip, SandboxEditor::CameraDefaultFovRadians(),
+                aznumeric_cast<float>(AZStd::max(size.m_width, 1u)) / aznumeric_cast<float>(AZStd::max(size.m_height, 1u)),
+                SandboxEditor::CameraDefaultNearPlaneDistance(), SandboxEditor::CameraDefaultFarPlaneDistance(), true);
+            auto* contextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
+            AZ::RPI::ViewportContextPtr context = contextManager ? contextManager->GetViewportContextById(viewportId) : nullptr;
+            context && (context->SetCameraProjectionMatrix(viewToClip), true);
+        };
+        slot.m_sizeChanged = AZ::RPI::ViewportContext::SizeChangedEvent::Handler(applyProjection);
+        (index != 0 && viewportContext) &&
+            (viewportContext->ConnectSizeChangedHandler(slot.m_sizeChanged),
+             applyProjection(viewportContext->GetViewportSize()), true);
+
+        AZ::RPI::RenderPipelinePtr pipeline = viewportContext ? viewportContext->GetCurrentPipeline() : nullptr;
+        pipeline && ((index == 0 ? pipeline->AddToRenderTick() : pipeline->RemoveFromRenderTick()), true);
+
+        ApplyViewModes(slot);
+    }
+
     void ViewportLayout::ActivateViewport(Slot& slot)
     {
         AZ_Assert(slot.m_engineViewport, "ActivateViewport called on a slot with no engine viewport");
@@ -365,7 +381,7 @@ namespace Hammer
     {
         auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
         AZ_Assert(viewportContextManager, "ApplyViewModes called without the ViewportContextManager");
-        AZ::RPI::ViewportContextPtr viewportContext = viewportContextManager
+        AZ::RPI::ViewportContextPtr viewportContext = (viewportContextManager && slot.m_engineViewport)
             ? viewportContextManager->GetViewportContextById(slot.m_engineViewport->GetViewportId())
             : nullptr;
         AZ::RPI::RenderPipelinePtr pipeline = viewportContext ? viewportContext->GetCurrentPipeline() : nullptr;
@@ -412,8 +428,8 @@ namespace Hammer
         auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
         for (Slot& slot : m_slots)
         {
-            m_activeSlot = slot.m_engineViewport == primaryViewport ? &slot : m_activeSlot;
-            AZ::RPI::ViewportContextPtr viewportContext = viewportContextManager
+            m_activeSlot = (slot.m_engineViewport && slot.m_engineViewport == primaryViewport) ? &slot : m_activeSlot;
+            AZ::RPI::ViewportContextPtr viewportContext = (viewportContextManager && slot.m_engineViewport)
                 ? viewportContextManager->GetViewportContextById(slot.m_engineViewport->GetViewportId())
                 : nullptr;
             AZ::RPI::RenderPipelinePtr pipeline = viewportContext ? viewportContext->GetCurrentPipeline() : nullptr;
@@ -562,7 +578,7 @@ namespace Hammer
         const AZ::Transform mirrored = defaultContext ? defaultContext->GetCameraTransform() : AZ::Transform::CreateIdentity();
         for (Slot& slot : m_slots)
         {
-            (defaultContext && slot.m_engineViewport != primaryViewport) &&
+            (defaultContext && slot.m_engineViewport && slot.m_engineViewport != primaryViewport) &&
                 (AtomToolsFramework::ModularViewportCameraControllerRequestBus::Event(
                      slot.m_engineViewport->GetViewportId(),
                      &AtomToolsFramework::ModularViewportCameraControllerRequests::StartTrackingTransform, mirrored),

@@ -59,6 +59,7 @@ namespace Hammer
             AZ::RPI::ViewportContext::SizeChangedEvent::Handler m_sizeChanged;
         };
 
+        void InitializeSlot(int index, EditorViewportWidget* engineViewport);
         void ActivateViewport(Slot& slot);
         void ApplyViewModes(Slot& slot);
         void SyncViewportUiOverlay();
