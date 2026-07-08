@@ -9,13 +9,10 @@
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzCore/std/algorithm.h>
 
-#include <Atom/RPI.Public/ViewportContext.h>
-#include <Atom/RPI.Public/ViewportContextBus.h>
-
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
 #include <AzToolsFramework/ActionManager/Action/ActionManagerInterface.h>
 #include <AzToolsFramework/ActionManager/Action/ActionManagerInternalInterface.h>
-#include <AzToolsFramework/Viewport/ViewportSettings.h>
+#include <Editor/EditorViewportWidget.h>
 
 #include <QAction>
 #include <QApplication>
@@ -32,16 +29,13 @@ namespace Hammer
 {
     namespace
     {
-        QWidget* FindMainEditorViewport(QWidget& root)
+        EditorViewportWidget* FindMainEditorViewport(QWidget& root)
         {
-            const QList<QWidget*> children = root.findChildren<QWidget*>();
-            const auto it = AZStd::find_if(
-                children.begin(), children.end(),
-                [](QWidget* child)
-                {
-                    return qstrcmp(child->metaObject()->className(), "EditorViewportWidget") == 0;
-                });
-            return it != children.end() ? *it : nullptr;
+            const QList<EditorViewportWidget*> viewports = root.findChildren<EditorViewportWidget*>();
+            AZ_Assert(
+                viewports.size() <= 1, "Found %d EditorViewportWidgets before Hammer created any",
+                static_cast<int>(viewports.size()));
+            return viewports.isEmpty() ? nullptr : viewports.first();
         }
     } // namespace
 
@@ -91,8 +85,6 @@ namespace Hammer
 
     void HammerEditorSystemComponent::Deactivate()
     {
-        AzToolsFramework::SetIconsVisible(true);
-
         m_viewportWidget && (delete m_viewportWidget.data(), true);
 
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
@@ -207,15 +199,6 @@ namespace Hammer
     {
         AZ_Assert(!m_viewportWidget, "EmbedViewportInCenter called while a viewport layout widget already exists");
 
-        auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
-        AZ_Error("HammerEditorSystemComponent", viewportContextManager, "Could not find AZ::RPI::ViewportContextRequestsInterface");
-
-        AZ::RPI::ViewportContextPtr defaultContext;
-        viewportContextManager && (defaultContext = viewportContextManager->GetDefaultViewportContext(), true);
-        AZ_Error("HammerEditorSystemComponent", defaultContext, "Could not find the default ViewportContext to rename");
-        defaultContext &&
-            (viewportContextManager->RenameViewportContext(defaultContext, AZ::Name("Hammer Startup Placeholder")), true);
-
         QWidget* mainWindowWidget = nullptr;
         AzToolsFramework::EditorRequestBus::BroadcastResult(mainWindowWidget, &AzToolsFramework::EditorRequests::GetMainWindow);
         const QWidgetList topLevelWidgets = QApplication::topLevelWidgets();
@@ -228,7 +211,7 @@ namespace Hammer
         mainWindowWidget = (!mainWindowWidget && mainWindowIt != topLevelWidgets.end()) ? *mainWindowIt : mainWindowWidget;
         AZ_Error("HammerEditorSystemComponent", mainWindowWidget, "Could not get the Editor main window");
 
-        QWidget* oldViewport = nullptr;
+        EditorViewportWidget* oldViewport = nullptr;
         mainWindowWidget && (oldViewport = FindMainEditorViewport(*mainWindowWidget), true);
         AZ_Error("HammerEditorSystemComponent", oldViewport, "Could not find the main EditorViewportWidget");
 
@@ -240,8 +223,7 @@ namespace Hammer
         }
         AZ_Error("HammerEditorSystemComponent", viewPaneHost, "Could not find the QMainWindow hosting the main viewport");
 
-        viewPaneHost && (m_viewportWidget = new HammerViewportWidget(viewPaneHost), true);
-        (m_viewportWidget && oldViewport) && (m_viewportWidget->AdoptRealPerspectiveViewport(*oldViewport), true);
+        (viewPaneHost && oldViewport) && (m_viewportWidget = new HammerViewportWidget(viewPaneHost, *oldViewport), true);
 
         AZ_Warning(
             "HammerEditorSystemComponent", viewPaneHost && oldViewport,

@@ -147,6 +147,7 @@ if(PAL_TRAIT_BUILD_HOST_TOOLS)
                 Gem::AtomLyIntegration_CommonFeatures.Public
                 Legacy::EditorLib
                 Legacy::Editor.Headers
+                Legacy::CryCommon
     )
 
     ly_add_target(
