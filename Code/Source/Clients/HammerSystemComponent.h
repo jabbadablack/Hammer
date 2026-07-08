@@ -5,11 +5,11 @@
 
 namespace Hammer
 {
-    class HammerSystemComponent
+    class SystemComponent
         : public AZ::Component
     {
     public:
-        AZ_COMPONENT_DECL(HammerSystemComponent);
+        AZ_COMPONENT_DECL(SystemComponent);
 
         static void Reflect(AZ::ReflectContext* context);
 

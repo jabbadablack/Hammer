@@ -6,15 +6,15 @@
 
 namespace Hammer
 {
-    class HammerModuleInterface
+    class ModuleInterface
         : public AZ::Module
     {
     public:
-        AZ_TYPE_INFO_WITH_NAME_DECL(HammerModuleInterface)
+        AZ_TYPE_INFO_WITH_NAME_DECL(ModuleInterface)
         AZ_RTTI_NO_TYPE_INFO_DECL()
         AZ_CLASS_ALLOCATOR_DECL
 
-        HammerModuleInterface();
+        ModuleInterface();
 
         AZ::ComponentTypeList GetRequiredSystemComponents() const override;
     };

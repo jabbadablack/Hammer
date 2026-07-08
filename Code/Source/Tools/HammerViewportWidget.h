@@ -3,12 +3,13 @@
 #if !defined(Q_MOC_RUN)
 #include <QPointer>
 #include <QWidget>
-#include <AzCore/std/containers/vector.h>
-#include <AzToolsFramework/API/EditorCameraBus.h>
+#include <Atom/RPI.Public/ViewportContext.h>
+#include <AzCore/std/containers/array.h>
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 #include <Hammer/HammerEditorViewportBus.h>
 #endif
 
+class EditorViewportWidget;
 class QAction;
 class QDockWidget;
 class QMainWindow;
@@ -23,61 +24,61 @@ namespace AzQtComponents
 
 namespace Hammer
 {
-    class HammerWidget;
+    struct ViewModes
+    {
+        bool m_normal = true;
+        bool m_wireframe = false;
+        bool m_overdraw = false;
+    };
 
-    class HammerViewportWidget
+    class ViewportLayout
         : public QWidget
         , private AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler
-        , private Camera::EditorCameraRequestBus::Handler
-        , private HammerEditorActiveViewportRequestBus::Handler
-        , private HammerViewportRequestBus::Handler
+        , private ViewportRequestBus::Handler
     {
         Q_OBJECT
     public:
         static constexpr int MaxViewportCount = 4;
 
-        explicit HammerViewportWidget(QWidget* parent = nullptr);
-        ~HammerViewportWidget() override;
+        ViewportLayout(QMainWindow* viewPaneHost, EditorViewportWidget& realViewport);
+        ~ViewportLayout() override;
 
-        void AdoptRealPerspectiveViewport(QWidget& realViewport);
-        void SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw) override;
         void SetCameraMirroringEnabled(bool enabled) override;
 
     protected:
         bool eventFilter(QObject* watched, QEvent* event) override;
 
     private:
-        void ActivateViewport(HammerWidget* viewport);
-        void ResolveViewportUiOverlayWindow();
+        struct Slot
+        {
+            EditorViewportWidget* m_engineViewport = nullptr;
+            QDockWidget* m_dock = nullptr;
+            ViewModes m_viewModes;
+            QPointer<QToolBar> m_toolBar;
+            AZ::RPI::ViewportContext::PipelineChangedEvent::Handler m_pipelineChanged;
+            AZ::RPI::ViewportContext::SizeChangedEvent::Handler m_sizeChanged;
+        };
+
+        void InitializeSlot(int index, EditorViewportWidget* engineViewport);
+        void ActivateViewport(Slot& slot);
+        void ApplyViewModes(Slot& slot);
         void SyncViewportUiOverlay();
         QToolBar* BuildViewportToolBar(size_t viewportIndex);
 
         void OnStartGameModeRequest() override;
         void OnStopGameModeRequest() override;
 
-        void SetActiveViewportId(AzFramework::ViewportId viewportId) override;
-        AzFramework::ViewportId GetActiveViewportId() const override;
-
-        void SetViewFromEntityPerspective(const AZ::EntityId& entityId) override;
-        AZ::EntityId GetCurrentViewEntityId() override;
-        bool GetActiveCameraPosition(AZ::Vector3& cameraPos) override;
-        AZStd::optional<AZ::Transform> GetActiveCameraTransform() override;
-        AZStd::optional<float> GetCameraFoV() override;
-        bool GetActiveCameraState(AzFramework::CameraState& cameraState) override;
-
         QMainWindow* m_dockHost = nullptr;
         AzQtComponents::FancyDocking* m_fancyDocking = nullptr;
         QDockWidget* m_dockAnchor = nullptr;
         QAction* m_addViewportAction = nullptr;
         QPointer<QToolButton> m_addViewportButton;
-        AZStd::vector<HammerWidget*> m_viewports;
-        AZStd::vector<QPointer<QToolBar>> m_viewportToolBars;
-        AzFramework::ViewportId m_activeViewportId = AzFramework::InvalidViewportId;
-        HammerWidget* m_activeViewport = nullptr;
-        HammerWidget* m_adoptedViewport = nullptr;
-        HammerWidget* m_preGameModeActiveViewport = nullptr;
+        AZStd::array<Slot, MaxViewportCount> m_slots;
+        Slot* m_activeSlot = nullptr;
+        Slot* m_preGameModeActiveSlot = nullptr;
         QWidget* m_viewportUiOverlayWindow = nullptr;
         QTimer* m_overlaySyncTimer = nullptr;
         bool m_cameraMirroringEnabled = false;
+        bool m_gameModeSuppressed = false;
     };
 } // namespace Hammer

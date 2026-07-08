@@ -5,17 +5,17 @@
 
 namespace Hammer
 {
-    class HammerModule
-        : public HammerModuleInterface
+    class Module
+        : public ModuleInterface
     {
     public:
-        AZ_RTTI(HammerModule, HammerModuleTypeId, HammerModuleInterface);
-        AZ_CLASS_ALLOCATOR(HammerModule, AZ::SystemAllocator);
+        AZ_RTTI(Module, ModuleTypeId, ModuleInterface);
+        AZ_CLASS_ALLOCATOR(Module, AZ::SystemAllocator);
     };
 }// namespace Hammer
 
 #if defined(O3DE_GEM_NAME)
-AZ_DECLARE_MODULE_CLASS(AZ_JOIN(Gem_, O3DE_GEM_NAME), Hammer::HammerModule)
+AZ_DECLARE_MODULE_CLASS(AZ_JOIN(Gem_, O3DE_GEM_NAME), Hammer::Module)
 #else
-AZ_DECLARE_MODULE_CLASS(Gem_Hammer, Hammer::HammerModule)
+AZ_DECLARE_MODULE_CLASS(Gem_Hammer, Hammer::Module)
 #endif

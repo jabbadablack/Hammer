@@ -2,13 +2,12 @@
 #pragma once
 
 #include <AzCore/EBus/EBus.h>
-#include <AzFramework/Viewport/ViewportId.h>
 
 #include <Hammer/HammerTypeIds.h>
 
 namespace Hammer
 {
-    class HammerViewportBusTraits
+    class ViewportBusTraits
         : public AZ::EBusTraits
     {
     public:
@@ -16,27 +15,14 @@ namespace Hammer
         static constexpr AZ::EBusAddressPolicy AddressPolicy = AZ::EBusAddressPolicy::Single;
     };
 
-    class HammerEditorActiveViewportRequests
+    class ViewportRequests
     {
     public:
-        AZ_RTTI(HammerEditorActiveViewportRequests, HammerEditorViewportBusTypeId);
-        virtual ~HammerEditorActiveViewportRequests() = default;
+        AZ_RTTI(ViewportRequests, ViewportRequestBusTypeId);
+        virtual ~ViewportRequests() = default;
 
-        virtual void SetActiveViewportId(AzFramework::ViewportId viewportId) = 0;
-        virtual AzFramework::ViewportId GetActiveViewportId() const = 0;
-    };
-
-    using HammerEditorActiveViewportRequestBus = AZ::EBus<HammerEditorActiveViewportRequests, HammerViewportBusTraits>;
-
-    class HammerViewportRequests
-    {
-    public:
-        AZ_RTTI(HammerViewportRequests, HammerViewportRequestBusTypeId);
-        virtual ~HammerViewportRequests() = default;
-
-        virtual void SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw) = 0;
         virtual void SetCameraMirroringEnabled(bool enabled) = 0;
     };
 
-    using HammerViewportRequestBus = AZ::EBus<HammerViewportRequests, HammerViewportBusTraits>;
+    using ViewportRequestBus = AZ::EBus<ViewportRequests, ViewportBusTraits>;
 } // namespace Hammer

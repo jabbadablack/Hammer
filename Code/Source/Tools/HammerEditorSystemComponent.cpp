@@ -9,13 +9,10 @@
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzCore/std/algorithm.h>
 
-#include <Atom/RPI.Public/ViewportContext.h>
-#include <Atom/RPI.Public/ViewportContextBus.h>
-
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
 #include <AzToolsFramework/ActionManager/Action/ActionManagerInterface.h>
 #include <AzToolsFramework/ActionManager/Action/ActionManagerInternalInterface.h>
-#include <AzToolsFramework/Viewport/ViewportSettings.h>
+#include <Editor/EditorViewportWidget.h>
 
 #include <QAction>
 #include <QApplication>
@@ -32,78 +29,73 @@ namespace Hammer
 {
     namespace
     {
-        QWidget* FindMainEditorViewport(QWidget& root)
+        EditorViewportWidget* FindMainEditorViewport(QWidget& root)
         {
-            const QList<QWidget*> children = root.findChildren<QWidget*>();
-            const auto it = AZStd::find_if(
-                children.begin(), children.end(),
-                [](QWidget* child)
-                {
-                    return qstrcmp(child->metaObject()->className(), "EditorViewportWidget") == 0;
-                });
-            return it != children.end() ? *it : nullptr;
+            const QList<EditorViewportWidget*> viewports = root.findChildren<EditorViewportWidget*>();
+            AZ_Assert(
+                viewports.size() <= 1, "Found %d EditorViewportWidgets before Hammer created any",
+                static_cast<int>(viewports.size()));
+            return viewports.isEmpty() ? nullptr : viewports.first();
         }
     } // namespace
 
-    AZ_COMPONENT_IMPL(HammerEditorSystemComponent, "HammerEditorSystemComponent",
-        HammerEditorSystemComponentTypeId, BaseSystemComponent);
+    AZ_COMPONENT_IMPL(EditorSystemComponent, "HammerEditorSystemComponent",
+        EditorSystemComponentTypeId, BaseSystemComponent);
 
-    void HammerEditorSystemComponent::Reflect(AZ::ReflectContext* context)
+    void EditorSystemComponent::Reflect(AZ::ReflectContext* context)
     {
-        HammerViewModeFeatureProcessor::Reflect(context);
+        ViewModeFeatureProcessor::Reflect(context);
 
         auto* serializeContext = azrtti_cast<AZ::SerializeContext*>(context);
         serializeContext &&
-            (serializeContext->Class<HammerEditorSystemComponent, HammerSystemComponent>()->Version(0), true);
+            (serializeContext->Class<EditorSystemComponent, SystemComponent>()->Version(0), true);
 
         auto* behaviorContext = azrtti_cast<AZ::BehaviorContext*>(context);
         behaviorContext &&
-            (behaviorContext->EBus<HammerViewportRequestBus>("HammerViewportRequestBus")
+            (behaviorContext->EBus<ViewportRequestBus>("HammerViewportRequestBus")
                  ->Attribute(AZ::Script::Attributes::Scope, AZ::Script::Attributes::ScopeFlags::Automation)
                  ->Attribute(AZ::Script::Attributes::Category, "Editor")
                  ->Attribute(AZ::Script::Attributes::Module, "hammer")
-                 ->Event("SetCameraMirroringEnabled", &HammerViewportRequestBus::Events::SetCameraMirroringEnabled),
+                 ->Event("SetCameraMirroringEnabled", &ViewportRequestBus::Events::SetCameraMirroringEnabled),
              true);
     }
 
-    void HammerEditorSystemComponent::GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided)
+    void EditorSystemComponent::GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided)
     {
         BaseSystemComponent::GetProvidedServices(provided);
         provided.push_back(AZ_CRC_CE("HammerEditorService"));
     }
 
-    void HammerEditorSystemComponent::GetIncompatibleServices(AZ::ComponentDescriptor::DependencyArrayType& incompatible)
+    void EditorSystemComponent::GetIncompatibleServices(AZ::ComponentDescriptor::DependencyArrayType& incompatible)
     {
         BaseSystemComponent::GetIncompatibleServices(incompatible);
         incompatible.push_back(AZ_CRC_CE("HammerEditorService"));
     }
 
-    void HammerEditorSystemComponent::Activate()
+    void EditorSystemComponent::Activate()
     {
-        HammerSystemComponent::Activate();
+        SystemComponent::Activate();
 
         auto* featureProcessorFactory = AZ::RPI::FeatureProcessorFactory::Get();
-        AZ_Assert(featureProcessorFactory, "HammerEditorSystemComponent activated before the FeatureProcessorFactory");
-        featureProcessorFactory->RegisterFeatureProcessor<HammerViewModeFeatureProcessor>();
+        AZ_Assert(featureProcessorFactory, "EditorSystemComponent activated before the FeatureProcessorFactory");
+        featureProcessorFactory->RegisterFeatureProcessor<ViewModeFeatureProcessor>();
 
         AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
     }
 
-    void HammerEditorSystemComponent::Deactivate()
+    void EditorSystemComponent::Deactivate()
     {
-        AzToolsFramework::SetIconsVisible(true);
-
-        m_viewportWidget && (delete m_viewportWidget.data(), true);
+        m_viewportLayout && (delete m_viewportLayout.data(), true);
 
         AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
 
         auto* featureProcessorFactory = AZ::RPI::FeatureProcessorFactory::Get();
-        featureProcessorFactory && (featureProcessorFactory->UnregisterFeatureProcessor<HammerViewModeFeatureProcessor>(), true);
+        featureProcessorFactory && (featureProcessorFactory->UnregisterFeatureProcessor<ViewModeFeatureProcessor>(), true);
 
-        HammerSystemComponent::Deactivate();
+        SystemComponent::Deactivate();
     }
 
-    void HammerEditorSystemComponent::NotifyCentralWidgetInitialized()
+    void EditorSystemComponent::NotifyCentralWidgetInitialized()
     {
         auto* fileIo = AZ::IO::FileIOBase::GetInstance();
         AZ_Assert(fileIo, "NotifyCentralWidgetInitialized fired before FileIOBase is available");
@@ -111,7 +103,7 @@ namespace Hammer
         const bool bundledPathResolved =
             fileIo && fileIo->ResolvePath("@gemroot:Hammer@/Editor/hammer_layout.ini", bundledLayoutPath, AZ_MAX_PATH_LEN);
         AZ_Warning(
-            "HammerEditorSystemComponent", bundledPathResolved,
+            "Hammer", bundledPathResolved,
             "Could not resolve @gemroot:Hammer@; the bundled Hammer layout will not be imported");
 
         QSettings settings("O3DE", "O3DE");
@@ -127,23 +119,23 @@ namespace Hammer
         EmbedViewportInCenter();
     }
 
-    void HammerEditorSystemComponent::NotifyEditorInitialized()
+    void EditorSystemComponent::NotifyEditorInitialized()
     {
         auto* actionManagerInterface = AZ::Interface<AzToolsFramework::ActionManagerInterface>::Get();
         auto* actionManagerInternalInterface = AZ::Interface<AzToolsFramework::ActionManagerInternalInterface>::Get();
         AZ_Error(
-            "HammerEditorSystemComponent", actionManagerInterface && actionManagerInternalInterface,
+            "Hammer", actionManagerInterface && actionManagerInternalInterface,
             "Could not find the ActionManager interfaces; the Hammer startup layout will not be applied");
 
         const bool hammerLayoutSaved = QSettings("O3DE", "O3DE").contains("Editor/fancyWindowLayouts/hammer_layout");
         AZ_Warning(
-            "HammerEditorSystemComponent", hammerLayoutSaved,
+            "Hammer", hammerLayoutSaved,
             "No saved 'hammer_layout' found; the editor will keep its stock default layout");
 
         QAction* restoreDefaultAction =
             actionManagerInternalInterface ? actionManagerInternalInterface->GetAction("o3de.action.layout.restoreDefault") : nullptr;
         AZ_Warning(
-            "HammerEditorSystemComponent", restoreDefaultAction || !hammerLayoutSaved,
+            "Hammer", restoreDefaultAction || !hammerLayoutSaved,
             "Could not find the Restore Default Layout action to redirect to 'hammer_layout'");
 
         (restoreDefaultAction && hammerLayoutSaved && actionManagerInterface) &&
@@ -172,7 +164,7 @@ namespace Hammer
             const bool bundledPathResolved =
                 fileIo && fileIo->ResolvePath("@gemroot:Hammer@/Editor/hammer_layout.ini", bundledLayoutPath, AZ_MAX_PATH_LEN);
             AZ_Warning(
-                "HammerEditorSystemComponent", bundledPathResolved,
+                "Hammer", bundledPathResolved,
                 "Could not resolve @gemroot:Hammer@; the Hammer layout will not be exported with the gem");
 
             const QVariant userLayout = QSettings("O3DE", "O3DE").value("Editor/fancyWindowLayouts/hammer_layout");
@@ -191,7 +183,7 @@ namespace Hammer
                  QSettings(QString::fromUtf8(bundledLayoutPath), QSettings::IniFormat).setValue("hammer_layout", userLayout),
                  true);
             AZ_Warning(
-                "HammerEditorSystemComponent", !layoutChanged || QFile::exists(QString::fromUtf8(bundledLayoutPath)),
+                "Hammer", !layoutChanged || QFile::exists(QString::fromUtf8(bundledLayoutPath)),
                 "Failed to write the bundled Hammer layout file");
         };
         exportHammerLayout();
@@ -203,18 +195,9 @@ namespace Hammer
             (QObject::connect(saveHammerLayoutAction, &QAction::triggered, saveHammerLayoutAction, exportHammerLayout), true);
     }
 
-    void HammerEditorSystemComponent::EmbedViewportInCenter()
+    void EditorSystemComponent::EmbedViewportInCenter()
     {
-        AZ_Assert(!m_viewportWidget, "EmbedViewportInCenter called while a viewport layout widget already exists");
-
-        auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
-        AZ_Error("HammerEditorSystemComponent", viewportContextManager, "Could not find AZ::RPI::ViewportContextRequestsInterface");
-
-        AZ::RPI::ViewportContextPtr defaultContext;
-        viewportContextManager && (defaultContext = viewportContextManager->GetDefaultViewportContext(), true);
-        AZ_Error("HammerEditorSystemComponent", defaultContext, "Could not find the default ViewportContext to rename");
-        defaultContext &&
-            (viewportContextManager->RenameViewportContext(defaultContext, AZ::Name("Hammer Startup Placeholder")), true);
+        AZ_Assert(!m_viewportLayout, "EmbedViewportInCenter called while a viewport layout widget already exists");
 
         QWidget* mainWindowWidget = nullptr;
         AzToolsFramework::EditorRequestBus::BroadcastResult(mainWindowWidget, &AzToolsFramework::EditorRequests::GetMainWindow);
@@ -226,11 +209,11 @@ namespace Hammer
                 return qstrcmp(widget->metaObject()->className(), "MainWindow") == 0;
             });
         mainWindowWidget = (!mainWindowWidget && mainWindowIt != topLevelWidgets.end()) ? *mainWindowIt : mainWindowWidget;
-        AZ_Error("HammerEditorSystemComponent", mainWindowWidget, "Could not get the Editor main window");
+        AZ_Error("Hammer", mainWindowWidget, "Could not get the Editor main window");
 
-        QWidget* oldViewport = nullptr;
+        EditorViewportWidget* oldViewport = nullptr;
         mainWindowWidget && (oldViewport = FindMainEditorViewport(*mainWindowWidget), true);
-        AZ_Error("HammerEditorSystemComponent", oldViewport, "Could not find the main EditorViewportWidget");
+        AZ_Error("Hammer", oldViewport, "Could not find the main EditorViewportWidget");
 
         QMainWindow* viewPaneHost = nullptr;
         QWidget* startAncestor = oldViewport ? oldViewport->parentWidget() : nullptr;
@@ -238,13 +221,12 @@ namespace Hammer
         {
             viewPaneHost = qobject_cast<QMainWindow*>(ancestor);
         }
-        AZ_Error("HammerEditorSystemComponent", viewPaneHost, "Could not find the QMainWindow hosting the main viewport");
+        AZ_Error("Hammer", viewPaneHost, "Could not find the QMainWindow hosting the main viewport");
 
-        viewPaneHost && (m_viewportWidget = new HammerViewportWidget(viewPaneHost), true);
-        (m_viewportWidget && oldViewport) && (m_viewportWidget->AdoptRealPerspectiveViewport(*oldViewport), true);
+        (viewPaneHost && oldViewport) && (m_viewportLayout = new ViewportLayout(viewPaneHost, *oldViewport), true);
 
         AZ_Warning(
-            "HammerEditorSystemComponent", viewPaneHost && oldViewport,
+            "Hammer", viewPaneHost && oldViewport,
             "Could not fully embed the Hammer viewports into the editor's dock space");
     }
 

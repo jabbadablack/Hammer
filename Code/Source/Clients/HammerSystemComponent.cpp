@@ -7,29 +7,29 @@
 
 namespace Hammer
 {
-    AZ_COMPONENT_IMPL(HammerSystemComponent, "HammerSystemComponent", HammerSystemComponentTypeId);
+    AZ_COMPONENT_IMPL(SystemComponent, "HammerSystemComponent", SystemComponentTypeId);
 
-    void HammerSystemComponent::Reflect(AZ::ReflectContext* context)
+    void SystemComponent::Reflect(AZ::ReflectContext* context)
     {
         auto* serializeContext = azrtti_cast<AZ::SerializeContext*>(context);
-        serializeContext && (serializeContext->Class<HammerSystemComponent, AZ::Component>()->Version(0), true);
+        serializeContext && (serializeContext->Class<SystemComponent, AZ::Component>()->Version(0), true);
     }
 
-    void HammerSystemComponent::GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided)
+    void SystemComponent::GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided)
     {
         provided.push_back(AZ_CRC_CE("HammerService"));
     }
 
-    void HammerSystemComponent::GetIncompatibleServices(AZ::ComponentDescriptor::DependencyArrayType& incompatible)
+    void SystemComponent::GetIncompatibleServices(AZ::ComponentDescriptor::DependencyArrayType& incompatible)
     {
         incompatible.push_back(AZ_CRC_CE("HammerService"));
     }
 
-    void HammerSystemComponent::Activate()
+    void SystemComponent::Activate()
     {
     }
 
-    void HammerSystemComponent::Deactivate()
+    void SystemComponent::Deactivate()
     {
     }
 } // namespace Hammer
