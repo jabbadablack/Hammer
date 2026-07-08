@@ -1,13 +1,14 @@
 #include "HammerViewportWidget.h"
-#include "HammerWidget.h"
 
 #include <Atom/RPI.Public/Pass/Pass.h>
 #include <Atom/RPI.Public/RenderPipeline.h>
 #include <Atom/RPI.Public/ViewportContext.h>
 #include <Atom/RPI.Public/ViewportContextBus.h>
-#include <AzCore/Name/Name.h>
 #include <AtomToolsFramework/Viewport/ModularViewportCameraControllerRequestBus.h>
+#include <AzCore/Casting/numeric_cast.h>
 #include <AzCore/Interface/Interface.h>
+#include <AzCore/Math/MatrixUtils.h>
+#include <AzCore/Name/Name.h>
 #include <AzCore/std/algorithm.h>
 #include <AzQtComponents/Components/DockTabWidget.h>
 #include <AzQtComponents/Components/FancyDocking.h>
@@ -16,10 +17,12 @@
 #include <AzToolsFramework/ActionManager/Action/ActionManagerInternalInterface.h>
 #include <AzToolsFramework/ActionManager/Menu/MenuManagerInternalInterface.h>
 #include <AzToolsFramework/Editor/ActionManagerIdentifiers/EditorMenuIdentifiers.h>
+#include <Editor/EditorViewportSettings.h>
 #include <Editor/EditorViewportWidget.h>
 
 #include <QAbstractButton>
 #include <QAction>
+#include <QDockWidget>
 #include <QEvent>
 #include <QFile>
 #include <QIcon>
@@ -35,9 +38,9 @@
 
 namespace Hammer
 {
-    QToolBar* HammerViewportWidget::BuildViewportToolBar(size_t viewportIndex)
+    QToolBar* ViewportLayout::BuildViewportToolBar(size_t viewportIndex)
     {
-        AZ_Assert(viewportIndex < m_viewports.size(), "BuildViewportToolBar called with an out-of-range viewport index");
+        AZ_Assert(viewportIndex < m_slots.size(), "BuildViewportToolBar called with an out-of-range viewport index");
         auto* actionManagerInternal = AZ::Interface<AzToolsFramework::ActionManagerInternalInterface>::Get();
         auto* menuManagerInternal = AZ::Interface<AzToolsFramework::MenuManagerInternalInterface>::Get();
         QAction* readinessProbe = (actionManagerInternal && menuManagerInternal)
@@ -56,15 +59,11 @@ namespace Hammer
         toolBar->hide();
 
         QAction* focusUpAction = actionManagerInternal->GetAction("o3de.action.prefabs.focusUpOneLevel");
-        AZ_Error(
-            "HammerViewportWidget", focusUpAction,
-            "Could not find the prefab focus-up action for the Hammer viewport toolbar");
+        AZ_Error("Hammer", focusUpAction, "Could not find the prefab focus-up action for the viewport toolbar");
         focusUpAction && (toolBar->addAction(focusUpAction), true);
 
         QWidget* focusPath = actionManagerInternal->GenerateWidgetFromWidgetAction("o3de.widgetAction.prefab.focusPath");
-        AZ_Error(
-            "HammerViewportWidget", focusPath,
-            "Could not generate the prefab focus path widget for the Hammer viewport toolbar");
+        AZ_Error("Hammer", focusPath, "Could not generate the prefab focus path widget for the viewport toolbar");
         focusPath &&
             (toolBar->addWidget(focusPath)->setObjectName(QStringLiteral("o3de.widgetAction.prefab.focusPath")), true);
 
@@ -72,9 +71,7 @@ namespace Hammer
 
         QWidget* prefabEditMode =
             actionManagerInternal->GenerateWidgetFromWidgetAction("o3de.widgetAction.prefab.editVisualMode");
-        AZ_Error(
-            "HammerViewportWidget", prefabEditMode,
-            "Could not generate the prefab edit mode widget for the Hammer viewport toolbar");
+        AZ_Error("Hammer", prefabEditMode, "Could not generate the prefab edit mode widget for the viewport toolbar");
         prefabEditMode &&
             (toolBar->addWidget(prefabEditMode)->setObjectName(QStringLiteral("o3de.widgetAction.prefab.editVisualMode")),
              true);
@@ -98,8 +95,9 @@ namespace Hammer
                 modeAction, &QAction::toggled, this,
                 [this, viewportIndex, normalAction, wireframeAction, overdrawAction]
                 {
-                    m_viewports[viewportIndex]->SetViewModes(HammerViewModes{
-                        normalAction->isChecked(), wireframeAction->isChecked(), overdrawAction->isChecked() });
+                    m_slots[viewportIndex].m_viewModes =
+                        ViewModes{ normalAction->isChecked(), wireframeAction->isChecked(), overdrawAction->isChecked() };
+                    ApplyViewModes(m_slots[viewportIndex]);
                 });
         }
         normalAction->setChecked(true);
@@ -118,7 +116,7 @@ namespace Hammer
             viewModeMenu, &QMenu::aboutToShow, this,
             [this, viewportIndex, normalAction, wireframeAction, overdrawAction, mirrorAction]
             {
-                const HammerViewModes viewModes = m_viewports[viewportIndex]->GetViewModes();
+                const ViewModes viewModes = m_slots[viewportIndex].m_viewModes;
                 const QSignalBlocker normalBlocker(normalAction);
                 const QSignalBlocker wireframeBlocker(wireframeAction);
                 const QSignalBlocker overdrawBlocker(overdrawAction);
@@ -147,9 +145,7 @@ namespace Hammer
         {
             QAction* action = actionManagerInternal->GetAction(menuButton.m_actionId);
             QMenu* menu = menuManagerInternal->GetMenu(AZStd::string(menuButton.m_menuId));
-            AZ_Error(
-                "HammerViewportWidget", action && menu,
-                "Viewport toolbar entry '%s' is missing its action or menu", menuButton.m_actionId);
+            AZ_Error("Hammer", action && menu, "Viewport toolbar entry '%s' is missing its action or menu", menuButton.m_actionId);
             QToolButton* button = (action && menu) ? new QToolButton(toolBar) : nullptr;
             button &&
                 (button->setPopupMode(QToolButton::MenuButtonPopup), button->setAutoRaise(true), button->setMenu(menu),
@@ -163,10 +159,10 @@ namespace Hammer
         return toolBar;
     }
 
-    HammerViewportWidget::HammerViewportWidget(QMainWindow* viewPaneHost, EditorViewportWidget& realViewport)
+    ViewportLayout::ViewportLayout(QMainWindow* viewPaneHost, EditorViewportWidget& realViewport)
         : QWidget(viewPaneHost)
     {
-        AZ_Assert(viewPaneHost, "HammerViewportWidget constructed without the editor's view pane host");
+        AZ_Assert(viewPaneHost, "ViewportLayout constructed without the editor's view pane host");
 
         hide();
 
@@ -179,18 +175,16 @@ namespace Hammer
             });
         m_fancyDocking =
             fancyDockingIt != topLevelChildren.end() ? static_cast<AzQtComponents::FancyDocking*>(*fancyDockingIt) : nullptr;
-        AZ_Error(
-            "HammerViewportWidget", m_fancyDocking,
-            "Could not find the editor's FancyDocking manager; viewports will not be dockable");
+        AZ_Error("Hammer", m_fancyDocking, "Could not find the editor's FancyDocking manager; viewports will not be dockable");
 
         m_dockHost = m_fancyDocking ? qobject_cast<QMainWindow*>(m_fancyDocking->parentWidget()) : viewPaneHost;
-        AZ_Assert(m_dockHost, "HammerViewportWidget could not resolve the editor's view pane host QMainWindow");
+        AZ_Assert(m_dockHost, "ViewportLayout could not resolve the editor's view pane host QMainWindow");
 
         QWidget* oldCentralWidget = m_dockHost ? m_dockHost->takeCentralWidget() : nullptr;
         oldCentralWidget && (oldCentralWidget->hide(), true);
 
         auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
-        AZ_Assert(viewportContextManager, "HammerViewportWidget constructed before the ViewportContextManager exists");
+        AZ_Assert(viewportContextManager, "ViewportLayout constructed before the ViewportContextManager exists");
 
         for (int i = 0; i < MaxViewportCount; ++i)
         {
@@ -211,14 +205,48 @@ namespace Hammer
                 (engineViewport->resize(256, 256), static_cast<QtViewport*>(engineViewport)->SetViewportId(i),
                  engineViewport->ConnectViewportInteractionRequestBus(), true);
 
-            HammerWidget* viewport = new HammerWidget(dock, *engineViewport, i == 0);
-            dock->setWidget(viewport);
-            m_viewports.push_back(viewport);
-        }
+            (i == 0) && (engineViewport->hide(), engineViewport->setParent(nullptr), true);
+            engineViewport->setMinimumSize(50, 50);
+            dock->setWidget(engineViewport);
+            (i == 0) && (engineViewport->show(), true);
 
-        AZ_Assert(m_viewports.size() == MaxViewportCount, "HammerViewportWidget failed to create all %d viewports", MaxViewportCount);
-        m_viewportToolBars.resize(m_viewports.size());
-        m_adoptedViewport = m_viewports[0];
+            Slot& slot = m_slots[i];
+            slot.m_engineViewport = engineViewport;
+            slot.m_dock = dock;
+
+            const AzFramework::ViewportId viewportId = engineViewport->GetViewportId();
+            AZ::RPI::ViewportContextPtr viewportContext =
+                viewportContextManager ? viewportContextManager->GetViewportContextById(viewportId) : nullptr;
+            AZ_Error("Hammer", viewportContext, "No ViewportContext exists for viewport %d", viewportId);
+
+            slot.m_pipelineChanged = AZ::RPI::ViewportContext::PipelineChangedEvent::Handler(
+                [this, i](AZ::RPI::RenderPipelinePtr)
+                {
+                    ApplyViewModes(m_slots[i]);
+                });
+            viewportContext && (viewportContext->ConnectCurrentPipelineChangedHandler(slot.m_pipelineChanged), true);
+
+            const auto applyProjection = [viewportId](AzFramework::WindowSize size)
+            {
+                AZ::Matrix4x4 viewToClip;
+                AZ::MakePerspectiveFovMatrixRH(
+                    viewToClip, SandboxEditor::CameraDefaultFovRadians(),
+                    aznumeric_cast<float>(AZStd::max(size.m_width, 1u)) / aznumeric_cast<float>(AZStd::max(size.m_height, 1u)),
+                    SandboxEditor::CameraDefaultNearPlaneDistance(), SandboxEditor::CameraDefaultFarPlaneDistance(), true);
+                auto* contextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
+                AZ::RPI::ViewportContextPtr context = contextManager ? contextManager->GetViewportContextById(viewportId) : nullptr;
+                context && (context->SetCameraProjectionMatrix(viewToClip), true);
+            };
+            slot.m_sizeChanged = AZ::RPI::ViewportContext::SizeChangedEvent::Handler(applyProjection);
+            (i != 0 && viewportContext) &&
+                (viewportContext->ConnectSizeChangedHandler(slot.m_sizeChanged),
+                 applyProjection(viewportContext->GetViewportSize()), true);
+
+            AZ::RPI::RenderPipelinePtr pipeline = viewportContext ? viewportContext->GetCurrentPipeline() : nullptr;
+            pipeline && ((i == 0 ? pipeline->AddToRenderTick() : pipeline->RemoveFromRenderTick()), true);
+
+            ApplyViewModes(slot);
+        }
 
         m_dockAnchor = new AzQtComponents::StyledDockWidget(QStringLiteral("Viewport Dock Area"), this);
         m_dockAnchor->setObjectName(QStringLiteral("HammerViewportDockAnchor"));
@@ -230,171 +258,172 @@ namespace Hammer
         m_addViewportAction = new QAction(QIcon(QStringLiteral(":/Hammer/add-view.svg")), QObject::tr("Add Hammer Viewport"), this);
         m_addViewportAction->setObjectName(QStringLiteral("HammerAddViewportButton"));
         AZ_Warning(
-            "HammerViewportWidget", !m_addViewportAction->icon().isNull(),
+            "Hammer", !m_addViewportAction->icon().isNull(),
             "add-view.svg did not load from the Hammer qrc; the add-viewport button will render blank");
         connect(
             m_addViewportAction, &QAction::triggered, this,
             [this]
             {
-                auto* adoptedDock =
-                    m_adoptedViewport ? qobject_cast<QDockWidget*>(m_adoptedViewport->parentWidget()) : nullptr;
-                HammerWidget* unused = nullptr;
-                for (HammerWidget* viewport : m_viewports)
+                Slot* unused = nullptr;
+                for (Slot& slot : m_slots)
                 {
-                    auto* dock = qobject_cast<QDockWidget*>(viewport->parentWidget());
-                    const bool inUse = viewport == m_adoptedViewport || !dock || dock->isVisible() ||
-                        AzQtComponents::DockTabWidget::IsTabbed(dock);
-                    unused = (!unused && !inUse) ? viewport : unused;
+                    const bool inUse = &slot == &m_slots[0] || slot.m_dock->isVisible() ||
+                        AzQtComponents::DockTabWidget::IsTabbed(slot.m_dock);
+                    unused = (!unused && !inUse) ? &slot : unused;
                 }
-                (unused && adoptedDock && m_fancyDocking) &&
-                    (m_fancyDocking->tabifyDockWidget(
-                         adoptedDock, qobject_cast<QDockWidget*>(unused->parentWidget()), m_dockHost),
-                     unused->show(), true);
+                (unused && m_fancyDocking) &&
+                    (m_fancyDocking->tabifyDockWidget(m_slots[0].m_dock, unused->m_dock, m_dockHost),
+                     unused->m_engineViewport->show(), true);
             });
 
-        auto* firstDock = qobject_cast<QDockWidget*>(m_viewports[0]->parentWidget());
-        AZ_Assert(firstDock, "The startup viewport is not hosted in a QDockWidget");
-        m_dockHost->addDockWidget(Qt::LeftDockWidgetArea, firstDock);
-        m_dockHost->resizeDocks({ firstDock }, { m_dockHost->width() * 2 / 3 }, Qt::Horizontal);
-        firstDock->show();
-        m_viewports[0]->SetRenderTickEnabled(true);
-        ActivateViewport(m_viewports[0]);
+        m_dockHost->addDockWidget(Qt::LeftDockWidgetArea, m_slots[0].m_dock);
+        m_dockHost->resizeDocks({ m_slots[0].m_dock }, { m_dockHost->width() * 2 / 3 }, Qt::Horizontal);
+        m_slots[0].m_dock->show();
+        ActivateViewport(m_slots[0]);
 
-        HammerViewportRequestBus::Handler::BusConnect();
+        ViewportRequestBus::Handler::BusConnect();
         AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler::BusConnect();
 
-        ResolveViewportUiOverlayWindow();
+        m_viewportUiOverlayWindow = m_slots[0].m_engineViewport->findChild<QWidget*>(QStringLiteral("ViewportUiWindow"));
+        AZ_Warning(
+            "Hammer", m_viewportUiOverlayWindow,
+            "Could not find the ViewportUiWindow overlay; viewport UI will not follow the active viewport");
+        m_viewportUiOverlayWindow && (m_viewportUiOverlayWindow->installEventFilter(this), true);
+
+        m_overlaySyncTimer = new QTimer(this);
+        connect(m_overlaySyncTimer, &QTimer::timeout, this, &ViewportLayout::SyncViewportUiOverlay);
+        m_overlaySyncTimer->start(16);
     }
 
-    HammerViewportWidget::~HammerViewportWidget()
+    ViewportLayout::~ViewportLayout()
     {
         AZ_Assert(
-            HammerViewportRequestBus::Handler::BusIsConnected(),
-            "HammerViewportWidget destroyed while its viewport-request bus was already disconnected");
+            ViewportRequestBus::Handler::BusIsConnected(),
+            "ViewportLayout destroyed while its viewport-request bus was already disconnected");
 
         AzToolsFramework::EditorLegacyGameModeNotificationBus::Handler::BusDisconnect();
-        HammerViewportRequestBus::Handler::BusDisconnect();
+        ViewportRequestBus::Handler::BusDisconnect();
 
-        for (QPointer<QToolBar>& toolBar : m_viewportToolBars)
+        for (Slot& slot : m_slots)
         {
-            toolBar && (delete toolBar.data(), true);
+            slot.m_pipelineChanged.Disconnect();
+            slot.m_sizeChanged.Disconnect();
+            slot.m_toolBar && (delete slot.m_toolBar.data(), true);
         }
-        m_viewportToolBars.clear();
 
-        for (HammerWidget* viewport : m_viewports)
+        m_slots[0].m_engineViewport && (m_slots[0].m_engineViewport->setParent(nullptr), true);
+
+        for (Slot& slot : m_slots)
         {
-            QWidget* dock = qobject_cast<QDockWidget*>(viewport->parentWidget());
-            delete (dock ? dock : static_cast<QWidget*>(viewport));
+            delete slot.m_dock;
+            slot.m_dock = nullptr;
         }
-        m_viewports.clear();
 
         delete m_dockAnchor;
         m_dockAnchor = nullptr;
         delete m_addViewportButton;
     }
 
-    void HammerViewportWidget::OnStartGameModeRequest()
+    void ViewportLayout::OnStartGameModeRequest()
     {
-        AZ_Assert(m_adoptedViewport, "Game mode was requested before the viewport layout was constructed");
-        AZ_Assert(!m_preGameModeActiveViewport, "Game mode started while a previous pre-game-mode viewport is still pending");
-        m_preGameModeActiveViewport = m_activeViewport;
-        auto* adoptedDock = m_adoptedViewport ? qobject_cast<QDockWidget*>(m_adoptedViewport->parentWidget()) : nullptr;
-        auto* adoptedTabWidget = AzQtComponents::DockTabWidget::ParentTabWidget(adoptedDock);
-        adoptedTabWidget && (adoptedTabWidget->setCurrentWidget(adoptedDock), true);
-        m_adoptedViewport && (ActivateViewport(m_adoptedViewport), true);
-        for (HammerWidget* viewport : m_viewports)
+        AZ_Assert(!m_preGameModeActiveSlot, "Game mode started while a previous pre-game-mode viewport is still pending");
+        m_preGameModeActiveSlot = m_activeSlot;
+        auto* adoptedTabWidget = AzQtComponents::DockTabWidget::ParentTabWidget(m_slots[0].m_dock);
+        adoptedTabWidget && (adoptedTabWidget->setCurrentWidget(m_slots[0].m_dock), true);
+        ActivateViewport(m_slots[0]);
+        m_gameModeSuppressed = true;
+        for (Slot& slot : m_slots)
         {
-            viewport->SetGameModeSuppressed(true);
+            ApplyViewModes(slot);
         }
     }
 
-    void HammerViewportWidget::OnStopGameModeRequest()
+    void ViewportLayout::OnStopGameModeRequest()
     {
-        AZ_Assert(m_adoptedViewport, "Game mode was stopped before the viewport layout was constructed");
-        AZ_Assert(
-            !m_preGameModeActiveViewport ||
-                AZStd::find(m_viewports.begin(), m_viewports.end(), m_preGameModeActiveViewport) != m_viewports.end(),
-            "The pre-game-mode viewport is no longer tracked by this layout");
-        for (HammerWidget* viewport : m_viewports)
+        m_gameModeSuppressed = false;
+        for (Slot& slot : m_slots)
         {
-            viewport->SetGameModeSuppressed(false);
+            ApplyViewModes(slot);
         }
-        auto* previousDock =
-            m_preGameModeActiveViewport ? qobject_cast<QDockWidget*>(m_preGameModeActiveViewport->parentWidget()) : nullptr;
-        auto* previousTabWidget = AzQtComponents::DockTabWidget::ParentTabWidget(previousDock);
-        previousTabWidget && (previousTabWidget->setCurrentWidget(previousDock), true);
-        m_preGameModeActiveViewport && (ActivateViewport(m_preGameModeActiveViewport), true);
-        m_preGameModeActiveViewport = nullptr;
+        auto* previousTabWidget = m_preGameModeActiveSlot
+            ? AzQtComponents::DockTabWidget::ParentTabWidget(m_preGameModeActiveSlot->m_dock)
+            : nullptr;
+        previousTabWidget && (previousTabWidget->setCurrentWidget(m_preGameModeActiveSlot->m_dock), true);
+        m_preGameModeActiveSlot && (ActivateViewport(*m_preGameModeActiveSlot), true);
+        m_preGameModeActiveSlot = nullptr;
     }
 
-    void HammerViewportWidget::ActivateViewport(HammerWidget* viewport)
+    void ViewportLayout::ActivateViewport(Slot& slot)
     {
-        AZ_Assert(viewport, "ActivateViewport called with a null viewport");
-        AZ_Assert(
-            AZStd::find(m_viewports.begin(), m_viewports.end(), viewport) != m_viewports.end(),
-            "ActivateViewport called with a viewport this layout does not own");
-
-        m_activeViewport = viewport;
-        viewport->EngineViewport()->setFocus();
-        static_cast<QtViewport*>(viewport->EngineViewport())->Update();
+        AZ_Assert(slot.m_engineViewport, "ActivateViewport called on a slot with no engine viewport");
+        m_activeSlot = &slot;
+        slot.m_engineViewport->setFocus();
+        static_cast<QtViewport*>(slot.m_engineViewport)->Update();
     }
 
-    void HammerViewportWidget::ResolveViewportUiOverlayWindow()
+    void ViewportLayout::ApplyViewModes(Slot& slot)
     {
-        AZ_Assert(m_adoptedViewport, "ResolveViewportUiOverlayWindow called before the real viewport was adopted");
-        AZ_Assert(!m_overlaySyncTimer, "ResolveViewportUiOverlayWindow should only start the sync timer once");
+        auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
+        AZ_Assert(viewportContextManager, "ApplyViewModes called without the ViewportContextManager");
+        AZ::RPI::ViewportContextPtr viewportContext = viewportContextManager
+            ? viewportContextManager->GetViewportContextById(slot.m_engineViewport->GetViewportId())
+            : nullptr;
+        AZ::RPI::RenderPipelinePtr pipeline = viewportContext ? viewportContext->GetCurrentPipeline() : nullptr;
 
-        m_viewportUiOverlayWindow = m_adoptedViewport->findChild<QWidget*>(QStringLiteral("ViewportUiWindow"));
-        AZ_Warning(
-            "HammerViewportWidget", m_viewportUiOverlayWindow,
-            "Could not find the adopted viewport's ViewportUiWindow overlay; viewport UI will not follow the active viewport");
-        m_viewportUiOverlayWindow && (m_viewportUiOverlayWindow->installEventFilter(this), true);
+        AZ_Error(
+            "Hammer", !pipeline || pipeline->FindFirstPass(AZ::Name("HammerWireframePass")),
+            "Pipeline '%s' is missing the Hammer view-mode passes", pipeline ? pipeline->GetId().GetCStr() : "");
 
-        m_overlaySyncTimer = new QTimer(this);
-        connect(m_overlaySyncTimer, &QTimer::timeout, this, &HammerViewportWidget::SyncViewportUiOverlay);
-        m_overlaySyncTimer->start(16);
+        const ViewModes viewModes = m_gameModeSuppressed ? ViewModes{} : slot.m_viewModes;
+        const bool flatBackground = !viewModes.m_normal && (viewModes.m_wireframe || viewModes.m_overdraw);
+        const struct
+        {
+            const char* m_pass;
+            bool m_enabled;
+        } passes[] = {
+            { "OpaquePass", viewModes.m_normal },
+            { "Forward", viewModes.m_normal },
+            { "TransparentPass", viewModes.m_normal },
+            { "HammerViewModeBackgroundPass", flatBackground },
+            { "HammerWireframeHiddenPass", viewModes.m_wireframe },
+            { "HammerWireframePass", viewModes.m_wireframe },
+            { "HammerOverdrawCountPass", viewModes.m_overdraw },
+            { "HammerOverdrawResolvePass", viewModes.m_overdraw },
+        };
+        for (const auto& entry : passes)
+        {
+            AZ::RPI::Ptr<AZ::RPI::Pass> pass = pipeline ? pipeline->FindFirstPass(AZ::Name(entry.m_pass)) : nullptr;
+            pass && (pass->SetEnabled(entry.m_enabled), true);
+        }
     }
 
-    void HammerViewportWidget::SetCameraMirroringEnabled(bool enabled)
+    void ViewportLayout::SetCameraMirroringEnabled(bool enabled)
     {
         AZ_Assert(!enabled || m_overlaySyncTimer, "Camera mirroring enabled before the overlay sync timer exists; mirroring is driven by that timer");
         m_cameraMirroringEnabled = enabled;
     }
 
-    void HammerViewportWidget::SetActiveViewportViewModes(bool normal, bool wireframe, bool overdraw)
-    {
-        AZ_Assert(m_activeViewport, "SetActiveViewportViewModes called before any viewport was activated");
-        m_activeViewport && (m_activeViewport->SetViewModes(HammerViewModes{ normal, wireframe, overdraw }), true);
-    }
-
-    void HammerViewportWidget::SyncViewportUiOverlay()
+    void ViewportLayout::SyncViewportUiOverlay()
     {
         AZ_Assert(m_overlaySyncTimer, "SyncViewportUiOverlay ticked without its timer");
-        AZ_Assert(m_adoptedViewport, "SyncViewportUiOverlay ticked before the real viewport was adopted");
         AZ_Assert(m_dockAnchor, "SyncViewportUiOverlay ticked before the dock anchor was constructed");
 
         EditorViewportWidget* primaryViewport = EditorViewportWidget::GetPrimaryViewport();
-        const auto primaryIt = AZStd::find_if(
-            m_viewports.begin(), m_viewports.end(),
-            [primaryViewport](HammerWidget* viewport)
-            {
-                return viewport->EngineViewport() == primaryViewport;
-            });
-        m_activeViewport = primaryIt != m_viewports.end() ? *primaryIt : m_activeViewport;
-
-        auto* adoptedDock = qobject_cast<QDockWidget*>(m_adoptedViewport->parentWidget());
-        AZ_Assert(adoptedDock, "The adopted viewport is not hosted in a QDockWidget");
-
         auto* viewportContextManager = AZ::Interface<AZ::RPI::ViewportContextRequestsInterface>::Get();
-        for (HammerWidget* viewport : m_viewports)
+        for (Slot& slot : m_slots)
         {
-            viewport->SetRenderTickEnabled(viewport->isVisible());
-            AZ::RPI::ViewportContextPtr viewportContext =
-                viewportContextManager ? viewportContextManager->GetViewportContextById(viewport->GetViewportId()) : nullptr;
+            m_activeSlot = slot.m_engineViewport == primaryViewport ? &slot : m_activeSlot;
+            AZ::RPI::ViewportContextPtr viewportContext = viewportContextManager
+                ? viewportContextManager->GetViewportContextById(slot.m_engineViewport->GetViewportId())
+                : nullptr;
             AZ::RPI::RenderPipelinePtr pipeline = viewportContext ? viewportContext->GetCurrentPipeline() : nullptr;
+            pipeline &&
+                ((slot.m_engineViewport->isVisible() ? pipeline->AddToRenderTick() : pipeline->RemoveFromRenderTick()), true);
             AZ::RPI::Ptr<AZ::RPI::Pass> iconPass = pipeline ? pipeline->FindFirstPass(AZ::Name("2DPass")) : nullptr;
-            iconPass && (iconPass->SetEnabled(viewport->EngineViewport() == primaryViewport), true);
+            iconPass && (iconPass->SetEnabled(slot.m_engineViewport == primaryViewport), true);
         }
+
+        QDockWidget* adoptedDock = m_slots[0].m_dock;
 
         bool anyDockDocked = false;
         const QList<QDockWidget*> hostDocks = m_dockHost->findChildren<QDockWidget*>(QString(), Qt::FindDirectChildrenOnly);
@@ -405,12 +434,12 @@ namespace Hammer
                  hostDock->window() == m_dockHost->window());
         }
 
-        (adoptedDock && !adoptedDock->isVisible() && !AzQtComponents::DockTabWidget::IsTabbed(adoptedDock) &&
+        (!adoptedDock->isVisible() && !AzQtComponents::DockTabWidget::IsTabbed(adoptedDock) &&
          adoptedDock->window() == m_dockHost->window()) &&
             (m_dockHost->addDockWidget(Qt::LeftDockWidgetArea, adoptedDock), adoptedDock->show(), anyDockDocked = true, true);
 
-        const bool adoptedDockedInHost = adoptedDock && adoptedDock->isVisible() && !adoptedDock->isFloating() &&
-            adoptedDock->window() == m_dockHost->window();
+        const bool adoptedDockedInHost =
+            adoptedDock->isVisible() && !adoptedDock->isFloating() && adoptedDock->window() == m_dockHost->window();
         auto* adoptedTabWidget = AzQtComponents::DockTabWidget::ParentTabWidget(adoptedDock);
         (m_fancyDocking && adoptedDockedInHost && !adoptedTabWidget) &&
             (m_fancyDocking->createTabWidget(m_dockHost, adoptedDock), true);
@@ -451,17 +480,14 @@ namespace Hammer
         adoptedCloseButton &&
             (adoptedTabBar->setTabButton(adoptedTabIndex, closeSide, nullptr), adoptedCloseButton->deleteLater(), true);
 
-        AZ_Assert(
-            m_viewportToolBars.size() == m_viewports.size(),
-            "The viewport toolbar list is out of sync with the viewport list");
-        for (size_t i = 0; i < m_viewports.size(); ++i)
+        for (size_t i = 0; i < m_slots.size(); ++i)
         {
-            auto* dock = qobject_cast<QDockWidget*>(m_viewports[i]->parentWidget());
+            QDockWidget* dock = m_slots[i].m_dock;
             auto* tabWidget = AzQtComponents::DockTabWidget::ParentTabWidget(dock);
             QTabBar* tabBar = tabWidget ? tabWidget->tabBar() : nullptr;
-            QWidget* titleBar = (dock && !tabWidget) ? dock->titleBarWidget() : nullptr;
+            QWidget* titleBar = !tabWidget ? dock->titleBarWidget() : nullptr;
 
-            QPointer<QToolBar>& toolBar = m_viewportToolBars[i];
+            QPointer<QToolBar>& toolBar = m_slots[i].m_toolBar;
             (!toolBar) && (toolBar = BuildViewportToolBar(i), true);
 
             const bool currentInTab = tabWidget && tabBar && tabWidget->currentWidget() == dock;
@@ -517,13 +543,14 @@ namespace Hammer
             (anchorTabWidget && (anchorTabWidget->removeTab(m_dockAnchor), true),
              m_dockHost->removeDockWidget(m_dockAnchor), m_dockAnchor->setParent(this), m_dockAnchor->hide(), true);
 
-        const bool shouldChase = m_viewportUiOverlayWindow && m_activeViewport && m_activeViewport != m_adoptedViewport;
+        const bool shouldChase = m_viewportUiOverlayWindow && m_activeSlot && m_activeSlot != &m_slots[0];
 
         shouldChase &&
-            (m_viewportUiOverlayWindow->setGeometry(QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())),
+            (m_viewportUiOverlayWindow->setGeometry(QRect(
+                 m_activeSlot->m_engineViewport->mapToGlobal(QPoint(0, 0)), m_activeSlot->m_engineViewport->size())),
              true);
 
-        QWidget* activeViewportWindow = m_activeViewport ? m_activeViewport->window() : nullptr;
+        QWidget* activeViewportWindow = m_activeSlot ? m_activeSlot->m_engineViewport->window() : nullptr;
         (m_viewportUiOverlayWindow && m_viewportUiOverlayWindow->isVisible() && activeViewportWindow &&
          activeViewportWindow->isActiveWindow()) &&
             (m_viewportUiOverlayWindow->raise(), true);
@@ -533,17 +560,17 @@ namespace Hammer
             (defaultContext = viewportContextManager->GetDefaultViewportContext(), true);
 
         const AZ::Transform mirrored = defaultContext ? defaultContext->GetCameraTransform() : AZ::Transform::CreateIdentity();
-        for (HammerWidget* viewport : m_viewports)
+        for (Slot& slot : m_slots)
         {
-            (defaultContext && viewport->EngineViewport() != primaryViewport) &&
+            (defaultContext && slot.m_engineViewport != primaryViewport) &&
                 (AtomToolsFramework::ModularViewportCameraControllerRequestBus::Event(
-                     viewport->GetViewportId(),
+                     slot.m_engineViewport->GetViewportId(),
                      &AtomToolsFramework::ModularViewportCameraControllerRequests::StartTrackingTransform, mirrored),
                  true);
         }
     }
 
-    bool HammerViewportWidget::eventFilter(QObject* watched, QEvent* event)
+    bool ViewportLayout::eventFilter(QObject* watched, QEvent* event)
     {
         AZ_Assert(watched && event, "eventFilter invoked with a null object or event");
         auto* expander = qobject_cast<QToolButton*>(watched);
@@ -584,12 +611,12 @@ namespace Hammer
             return true;
         }
 
-        const bool isOverlayMoveOrResize = watched == m_viewportUiOverlayWindow && m_activeViewport &&
-            m_activeViewport != m_adoptedViewport && (event->type() == QEvent::Move || event->type() == QEvent::Resize);
+        const bool isOverlayMoveOrResize = watched == m_viewportUiOverlayWindow && m_activeSlot &&
+            m_activeSlot != &m_slots[0] && (event->type() == QEvent::Move || event->type() == QEvent::Resize);
 
         isOverlayMoveOrResize &&
-            (static_cast<QWidget*>(watched)->setGeometry(
-                 QRect(m_activeViewport->mapToGlobal(QPoint(0, 0)), m_activeViewport->size())),
+            (static_cast<QWidget*>(watched)->setGeometry(QRect(
+                 m_activeSlot->m_engineViewport->mapToGlobal(QPoint(0, 0)), m_activeSlot->m_engineViewport->size())),
              true);
 
         return QWidget::eventFilter(watched, event);

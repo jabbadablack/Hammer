@@ -13,15 +13,15 @@ class QWidget;
 
 namespace Hammer
 {
-    class HammerViewportWidget;
+    class ViewportLayout;
 
-    class HammerEditorSystemComponent
-        : public HammerSystemComponent
+    class EditorSystemComponent
+        : public SystemComponent
         , protected AzToolsFramework::EditorEvents::Bus::Handler
     {
-        using BaseSystemComponent = HammerSystemComponent;
+        using BaseSystemComponent = SystemComponent;
     public:
-        AZ_COMPONENT_DECL(HammerEditorSystemComponent);
+        AZ_COMPONENT_DECL(EditorSystemComponent);
 
         static void Reflect(AZ::ReflectContext* context);
 
@@ -37,7 +37,7 @@ namespace Hammer
 
         void EmbedViewportInCenter();
 
-        QPointer<HammerViewportWidget> m_viewportWidget;
+        QPointer<ViewportLayout> m_viewportLayout;
         bool m_seedHammerLayout = false;
     };
 } // namespace Hammer

@@ -27,7 +27,7 @@ namespace Hammer
 {
     namespace
     {
-        constexpr const char* LogWindow = "HammerViewMode";
+        constexpr const char* LogWindow = "Hammer";
         constexpr const char* PassTemplatesAssetPath = "Passes/HammerPassTemplates.azasset";
         constexpr const char* MaterialProductPath = "materials/viewmode/hammerviewmode.azmaterial";
         constexpr const char* SrgShaderProductPath = "shaders/viewmode/hammerwireframe.azshader";
@@ -35,17 +35,17 @@ namespace Hammer
         bool g_passTemplatesLoaded = false;
     } // namespace
 
-    void HammerViewModeFeatureProcessor::Reflect(AZ::ReflectContext* context)
+    void ViewModeFeatureProcessor::Reflect(AZ::ReflectContext* context)
     {
         auto* serializeContext = azrtti_cast<AZ::SerializeContext*>(context);
         serializeContext &&
-            (serializeContext->Class<HammerViewModeFeatureProcessor, AZ::RPI::FeatureProcessor>()->Version(0), true);
+            (serializeContext->Class<ViewModeFeatureProcessor, AZ::RPI::FeatureProcessor>()->Version(0), true);
     }
 
-    void HammerViewModeFeatureProcessor::Activate()
+    void ViewModeFeatureProcessor::Activate()
     {
         auto* passSystem = AZ::RPI::PassSystemInterface::Get();
-        AZ_Assert(passSystem, "HammerViewModeFeatureProcessor activated before the pass system");
+        AZ_Assert(passSystem, "ViewModeFeatureProcessor activated before the pass system");
 
         (!g_passTemplatesLoaded && passSystem) &&
             (g_passTemplatesLoaded = passSystem->LoadPassTemplateMappings(PassTemplatesAssetPath), true);
@@ -55,7 +55,7 @@ namespace Hammer
         EnableSceneNotification();
     }
 
-    void HammerViewModeFeatureProcessor::Deactivate()
+    void ViewModeFeatureProcessor::Deactivate()
     {
         DisableSceneNotification();
         m_meshes.clear();
@@ -65,7 +65,7 @@ namespace Hammer
         m_srgShaderAsset.Release();
     }
 
-    void HammerViewModeFeatureProcessor::QueueAssetLoads()
+    void ViewModeFeatureProcessor::QueueAssetLoads()
     {
         const bool needMaterialAsset = !m_materialAsset.GetId().IsValid();
         AZ::Data::AssetId materialAssetId;
@@ -90,7 +90,7 @@ namespace Hammer
              true);
     }
 
-    bool HammerViewModeFeatureProcessor::EnsureAssets()
+    bool ViewModeFeatureProcessor::EnsureAssets()
     {
         QueueAssetLoads();
 
@@ -99,7 +99,7 @@ namespace Hammer
         return m_material && m_srgShaderAsset.IsReady();
     }
 
-    void HammerViewModeFeatureProcessor::AddRenderPasses(AZ::RPI::RenderPipeline* renderPipeline)
+    void ViewModeFeatureProcessor::AddRenderPasses(AZ::RPI::RenderPipeline* renderPipeline)
     {
         AZ_Assert(renderPipeline, "AddRenderPasses called with a null render pipeline");
 
@@ -121,7 +121,7 @@ namespace Hammer
         (defaultView && !alreadyInjected && anchorsPresent && g_passTemplatesLoaded) && (InjectPasses(*renderPipeline), true);
     }
 
-    void HammerViewModeFeatureProcessor::InjectPasses(AZ::RPI::RenderPipeline& renderPipeline)
+    void ViewModeFeatureProcessor::InjectPasses(AZ::RPI::RenderPipeline& renderPipeline)
     {
         auto* passSystem = AZ::RPI::PassSystemInterface::Get();
         AZ_Assert(passSystem, "InjectPasses called without a pass system");
@@ -195,7 +195,7 @@ namespace Hammer
              true);
     }
 
-    void HammerViewModeFeatureProcessor::RefreshPipelinePasses(AZ::RPI::RenderPipeline& renderPipeline)
+    void ViewModeFeatureProcessor::RefreshPipelinePasses(AZ::RPI::RenderPipeline& renderPipeline)
     {
         m_pipelinePasses.erase(&renderPipeline);
 
@@ -223,7 +223,7 @@ namespace Hammer
              true);
     }
 
-    void HammerViewModeFeatureProcessor::OnRenderPipelineChanged(
+    void ViewModeFeatureProcessor::OnRenderPipelineChanged(
         AZ::RPI::RenderPipeline* renderPipeline, AZ::RPI::SceneNotification::RenderPipelineChangeType changeType)
     {
         AZ_Assert(renderPipeline, "OnRenderPipelineChanged called with a null render pipeline");
@@ -233,7 +233,7 @@ namespace Hammer
         !removed && (RefreshPipelinePasses(*renderPipeline), true);
     }
 
-    bool HammerViewModeFeatureProcessor::AnyViewModePassEnabled() const
+    bool ViewModeFeatureProcessor::AnyViewModePassEnabled() const
     {
         bool anyEnabled = false;
         for (const auto& [pipeline, passes] : m_pipelinePasses)
@@ -244,14 +244,14 @@ namespace Hammer
         return anyEnabled;
     }
 
-    void HammerViewModeFeatureProcessor::OnBeginPrepareRender()
+    void ViewModeFeatureProcessor::OnBeginPrepareRender()
     {
         const bool active = AnyViewModePassEnabled();
         (!active && !m_meshes.empty()) && (m_meshes.clear(), m_meshes.shrink_to_fit(), true);
         (active && EnsureAssets()) && (RefreshTrackedMeshes(), RefreshTransforms(), true);
     }
 
-    void HammerViewModeFeatureProcessor::RefreshTrackedMeshes()
+    void ViewModeFeatureProcessor::RefreshTrackedMeshes()
     {
         auto* meshFeatureProcessor = GetParentScene()->GetFeatureProcessor<AZ::Render::MeshFeatureProcessorInterface>();
 
@@ -292,7 +292,7 @@ namespace Hammer
         }
     }
 
-    void HammerViewModeFeatureProcessor::RebuildTrackedMeshes(
+    void ViewModeFeatureProcessor::RebuildTrackedMeshes(
         const AZStd::vector<AZStd::pair<AZ::EntityId, AZ::Data::Instance<AZ::RPI::Model>>>& current)
     {
         AZ_Assert(m_material, "RebuildTrackedMeshes called before the view-mode material was loaded");
@@ -331,7 +331,7 @@ namespace Hammer
         }
     }
 
-    void HammerViewModeFeatureProcessor::RefreshTransforms()
+    void ViewModeFeatureProcessor::RefreshTransforms()
     {
         for (TrackedMesh& mesh : m_meshes)
         {
@@ -346,7 +346,7 @@ namespace Hammer
         }
     }
 
-    void HammerViewModeFeatureProcessor::Render(const RenderPacket& packet)
+    void ViewModeFeatureProcessor::Render(const RenderPacket& packet)
     {
         const bool active = AnyViewModePassEnabled() && !m_meshes.empty();
         active &&

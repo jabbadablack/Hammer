@@ -8,22 +8,22 @@
 
 namespace Hammer
 {
-    AZ_TYPE_INFO_WITH_NAME_IMPL(HammerModuleInterface,
-        "HammerModuleInterface", HammerModuleInterfaceTypeId);
-    AZ_RTTI_NO_TYPE_INFO_IMPL(HammerModuleInterface, AZ::Module);
-    AZ_CLASS_ALLOCATOR_IMPL(HammerModuleInterface, AZ::SystemAllocator);
+    AZ_TYPE_INFO_WITH_NAME_IMPL(ModuleInterface,
+        "HammerModuleInterface", ModuleInterfaceTypeId);
+    AZ_RTTI_NO_TYPE_INFO_IMPL(ModuleInterface, AZ::Module);
+    AZ_CLASS_ALLOCATOR_IMPL(ModuleInterface, AZ::SystemAllocator);
 
-    HammerModuleInterface::HammerModuleInterface()
+    ModuleInterface::ModuleInterface()
     {
         m_descriptors.insert(m_descriptors.end(), {
-            HammerSystemComponent::CreateDescriptor(),
+            SystemComponent::CreateDescriptor(),
             });
     }
 
-    AZ::ComponentTypeList HammerModuleInterface::GetRequiredSystemComponents() const
+    AZ::ComponentTypeList ModuleInterface::GetRequiredSystemComponents() const
     {
         return AZ::ComponentTypeList{
-            azrtti_typeid<HammerSystemComponent>(),
+            azrtti_typeid<SystemComponent>(),
         };
     }
 } // namespace Hammer

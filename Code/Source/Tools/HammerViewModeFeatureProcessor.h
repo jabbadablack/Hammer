@@ -13,12 +13,12 @@
 
 namespace Hammer
 {
-    class HammerViewModeFeatureProcessor final
+    class ViewModeFeatureProcessor final
         : public AZ::RPI::FeatureProcessor
     {
     public:
-        AZ_CLASS_ALLOCATOR(HammerViewModeFeatureProcessor, AZ::SystemAllocator)
-        AZ_RTTI(Hammer::HammerViewModeFeatureProcessor, "{8C1F4B7A-52D3-4E68-9B0E-A2F30D174C55}", AZ::RPI::FeatureProcessor);
+        AZ_CLASS_ALLOCATOR(ViewModeFeatureProcessor, AZ::SystemAllocator)
+        AZ_RTTI(Hammer::ViewModeFeatureProcessor, "{8C1F4B7A-52D3-4E68-9B0E-A2F30D174C55}", AZ::RPI::FeatureProcessor);
 
         static void Reflect(AZ::ReflectContext* context);
 
